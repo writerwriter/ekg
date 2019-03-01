@@ -4,7 +4,8 @@ import keras
 import sklearn.metrics
 from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from sklearn.model_selection import train_test_split
-from normal_models import get_model
+# from normal_models import get_model
+from models import get_normal_model
 from utils import patient_split
 
 from datetime import datetime
@@ -121,10 +122,10 @@ def train():
     test_set[0], _ = DataGenerator.normalize(test_set[0], means_and_stds)
 
     # save means and stds
-    with open(model_checkpoints_dirname + '/means_and_stds.txt', 'wb') as f:
+    with open(model_checkpoints_dirname + '/means_and_stds.pl', 'wb') as f:
         pickle.dump(means_and_stds, f)
 
-    model = get_model()
+    model = get_normal_model()
     model.summary()
 
     callbacks = [
