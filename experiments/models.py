@@ -122,6 +122,7 @@ def get_survival_rate_model():
 
     output = Conv1D(8, 7, activation='relu', padding='same')(output)
     output = BatchNormalization()(output)
+    '''
     output = MaxPooling1D(2, padding='same')(output) # 208
 
     output = Conv1D(8, 7, activation='relu', padding='same')(output)
@@ -133,16 +134,18 @@ def get_survival_rate_model():
     output = MaxPooling1D(2, padding='same')(output) # 52
 
     output = Conv1D(8, 7, activation='relu', padding='same')(output)
+    '''
     output = GlobalAveragePooling1D()(output)
+
     # output = Flatten()(output)
     # output = Dense(8, activation='relu')(output)
     # output = BatchNormalization()(output)
     # output = Dense(8, activation='relu')(output)
     output = BatchNormalization()(output)
-    output = Dense(2, activation='softmax')(output)
+    output = Dense(4, activation='sigmoid')(output)
 
     model = Model(total_input, output)
-    model.compile('SGD', 'binary_crossentropy', metrics=['acc'])
+    model.compile('SGD', 'binary_crossentropy', metrics=['categorical_accuracy'])
     return model
 
 if __name__ == '__main__':
