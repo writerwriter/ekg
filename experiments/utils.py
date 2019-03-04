@@ -58,7 +58,7 @@ def load_data(do_bandpass_filter=True, filter_lowcut=30, filter_highcut=100):
     X, y = np.array(X), np.array(y)
     return X, y
 
-def load_target(target_name):
+def load_target(target_name, dtype=int):
     ahf2017_df = pd.read_excel('./AHF2017_outcome_anonymous.xls', skiprows=1)
     path_lvef_df = pd.read_csv('./LVEF_path.csv', header=None, names=['path', 'LVEF'])
 
@@ -70,7 +70,7 @@ def load_target(target_name):
     target = list()
     for p in patient_id:
         try:
-            target.append(int(ahf2017_df[target_name][ahf2017_df.code == p]))
+            target.append(dtype(ahf2017_df[target_name][ahf2017_df.code == p]))
         except:
             target.append(0)
 
