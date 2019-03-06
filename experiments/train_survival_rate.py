@@ -19,7 +19,9 @@ class DataGenerator:
     def __init__(self):
         self.patient_X = np.load('./patient_X.npy') # (852, 10, 10000)
         self.normal_X = np.load('./normal_X.npy') # (103, 10, 10000)
-        self.patient_event_dur = utils.load_target('MACE_dur') # (852)
+
+        self.patient_event = utils.load_target('ADHF')
+        self.patient_event_dur = utils.load_target('ADHF_dur') # (852)
         self.preprocessing()
 
     def preprocessing(self):
@@ -28,7 +30,7 @@ class DataGenerator:
             y = np.zeros((dur.shape[0], 4), dtype=np.float)
             for i in range(4):
                 # y[:, i] = np.clip(dur - 365*i, 0., 365.) / 365.
-                y[:, i] = dur >= 365*(i+1)
+                y[:, i] = (dur >= 365*(i+1)) | (self.patient_event == 0) # nothing happened = [1, 1, 1, 1]
             return y
 
         # combine normal and patient
@@ -90,44 +92,12 @@ class DataGenerator:
 
         return [X_train, y_train], [X_valid, y_valid], [X_test, y_test]
 
-def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=None):
-    """pretty print for confusion matrixes"""
-    columnwidth = max([len(x) for x in labels] + [5])  # 5 is value length
-    empty_cell = " " * columnwidth
-
-    # Begin CHANGES
-    fst_empty_cell = (columnwidth-3)//2 * " " + "t/p" + (columnwidth-3)//2 * " "
-
-    if len(fst_empty_cell) < len(empty_cell):
-        fst_empty_cell = " " * (len(empty_cell) - len(fst_empty_cell)) + fst_empty_cell
-    # Print header
-    print("    " + fst_empty_cell, end=" ")
-    # End CHANGES
-
-    for label in labels:
-        print("%{0}s".format(columnwidth) % label, end=" ")
-
-    print()
-    # Print rows
-    for i, label1 in enumerate(labels):
-        print("    %{0}s".format(columnwidth) % label1, end=" ")
-        for j in range(len(labels)):
-            cell = "%{0}.1f".format(columnwidth) % cm[i, j]
-            if hide_zeroes:
-                cell = cell if float(cm[i, j]) != 0 else empty_cell
-            if hide_diagonal:
-                cell = cell if i != j else empty_cell
-            if hide_threshold:
-                cell = cell if cm[i, j] > hide_threshold else empty_cell
-            print(cell, end=" ")
-        print()
-
 def train():
     g = DataGenerator()
     X, y = g.data()
     train_set, valid_set, test_set = g.split(X, y)
 
-    model_checkpoints_dirname = 'sr_model_checkpoints/'+datetime.now().strftime('%Y%m%d_%H%M_%S')
+    model_checkpoints_dirname = 'sr_adhf_model_checkpoints/'+datetime.now().strftime('%Y%m%d_%H%M_%S')
     tensorboard_log_dirname = model_checkpoints_dirname + '/logs'
     os.makedirs(model_checkpoints_dirname)
     os.makedirs(tensorboard_log_dirname)
