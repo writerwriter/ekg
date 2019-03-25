@@ -2,11 +2,11 @@ import numpy as np
 import better_exceptions; better_exceptions.hook()
 import keras
 import sklearn.metrics
-from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
+from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard, ReduceLROnPlateau
 from sklearn.model_selection import train_test_split
-# from normal_models import get_model
-from models import get_normal_model
+from models import get_normal_modelV2 as get_normal_model
 from utils import patient_split
+import keras.backend as K
 
 from datetime import datetime
 import pickle
@@ -111,7 +111,7 @@ def train():
     X, y = g.data()
     train_set, valid_set, test_set = g.split(X, y)
 
-    model_checkpoints_dirname = 'model_checkpoints/'+datetime.now().strftime('%Y%m%d%H%M%S')
+    model_checkpoints_dirname = 'model_checkpoints/'+datetime.now().strftime('%Y_%m%d_%H%M_%S')
     tensorboard_log_dirname = model_checkpoints_dirname + '/logs'
     os.makedirs(model_checkpoints_dirname)
     os.makedirs(tensorboard_log_dirname)
@@ -129,7 +129,8 @@ def train():
     model.summary()
 
     callbacks = [
-        # EarlyStopping(patience=5),
+        # EarlyStopping(patience=62),
+        # ReduceLROnPlateau(patience=25, cooldown=5, verbose=1),
         ModelCheckpoint(model_checkpoints_dirname + '/{epoch:02d}-{val_loss:.2f}.h5', verbose=1),
         TensorBoard(log_dir=tensorboard_log_dirname)
     ]
@@ -141,6 +142,8 @@ def train():
 
     y_pred = np.argmax(model.predict(test_set[0], batch_size=64), axis=1)
     y_true = test_set[1][:, 1]
+
+    print('Total accuracy:', sklearn.metrics.accuracy_score(y_true, y_pred))
     print(sklearn.metrics.classification_report(y_true, y_pred))
 
     print_cm(sklearn.metrics.confusion_matrix(y_true, y_pred), ['normal', 'patient'])

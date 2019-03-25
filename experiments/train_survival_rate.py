@@ -4,7 +4,7 @@ import keras
 import sklearn.metrics
 from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
 from sklearn.model_selection import train_test_split
-from models import get_survival_rate_model
+from models import get_survival_rate_modelV2 as get_survival_rate_model
 import utils
 from utils import patient_split
 
@@ -20,8 +20,8 @@ class DataGenerator:
         self.patient_X = np.load('./patient_X.npy') # (852, 10, 10000)
         self.normal_X = np.load('./normal_X.npy') # (103, 10, 10000)
 
-        self.patient_event = utils.load_target('ADHF')
-        self.patient_event_dur = utils.load_target('ADHF_dur') # (852)
+        self.patient_event = utils.load_target('MACE')
+        self.patient_event_dur = utils.load_target('MACE_dur') # (852)
         self.preprocessing()
 
     def preprocessing(self):
@@ -29,8 +29,8 @@ class DataGenerator:
             # 1 year, 2 years, 3 years, 4 years and above
             y = np.zeros((dur.shape[0], 4), dtype=np.float)
             for i in range(4):
-                # y[:, i] = np.clip(dur - 365*i, 0., 365.) / 365.
-                y[:, i] = (dur >= 365*(i+1)) | (self.patient_event == 0) # nothing happened = [1, 1, 1, 1]
+                y[:, i] = np.clip(np.clip(dur - 365*i, 0., 365.) / 365. + (self.patient_event == 0), 0., 1.)
+                # y[:, i] = (dur >= 365*(i+1)) | (self.patient_event == 0) # nothing happened = [1, 1, 1, 1]
             return y
 
         # combine normal and patient
@@ -97,7 +97,7 @@ def train():
     X, y = g.data()
     train_set, valid_set, test_set = g.split(X, y)
 
-    model_checkpoints_dirname = 'sr_adhf_model_checkpoints/'+datetime.now().strftime('%Y%m%d_%H%M_%S')
+    model_checkpoints_dirname = 'sr_mace_model_checkpoints/'+datetime.now().strftime('%Y%m%d_%H%M_%S')
     tensorboard_log_dirname = model_checkpoints_dirname + '/logs'
     os.makedirs(model_checkpoints_dirname)
     os.makedirs(tensorboard_log_dirname)
@@ -120,7 +120,7 @@ def train():
         TensorBoard(log_dir=tensorboard_log_dirname)
     ]
 
-    model.fit(train_set[0], train_set[1], batch_size=64, epochs=500, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
+    model.fit(train_set[0], train_set[1], batch_size=64, epochs=500, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True, class_weight=[1/0.65, 1/0.54, 1/0.49, 1/0.46])
 
     # y_pred = np.argmax(model.predict(test_set[0], batch_size=64), axis=1)
     # y_true = test_set[1][:, 1]
