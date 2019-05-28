@@ -12,7 +12,7 @@ from datetime import datetime
 import pickle
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 class DataGenerator:
     def __init__(self):
