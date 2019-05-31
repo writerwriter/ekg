@@ -381,22 +381,99 @@ def get_survival_rate_wb_model():
     model.compile('SGD', 'binary_crossentropy', metrics=['categorical_accuracy'])
     return model
 
+def get_survival_hazard_model():
+    def _negative_log_likelihood(E, risk):
+        hazard_ratio = K.exp(risk)
+        log_risk = K.log(K.cumsum(hazard_ratio))
+        uncensored_likelihood = risk - log_risk
+        censored_likelihood = uncensored_likelihood * E
+        neg_likelihood = -K.sum(censored_likelihood)
+        return neg_likelihood
+
+    total_input = Input((10000, 10))
+    ekg_input = Lambda(lambda x: x[:, :, :8])(total_input) # (10000, 8)
+    heart_sound_input = Lambda(lambda x: x[:, :, 8:])(total_input) # (10000, 2)
+
+    ekg = Conv1D(8, 7, activation='relu', padding='same')(ekg_input)
+    ekg = BatchNormalization()(ekg)
+    ekg = MaxPooling1D(3, padding='same')(ekg)
+
+    ekg = Conv1D(8, 7, activation='relu', padding='same')(ekg)
+    ekg = BatchNormalization()(ekg)
+    ekg = MaxPooling1D(2, padding='same')(ekg) # (?, 1666, 64)
+
+    # heart sound branch
+    hs_outputs = list()
+
+    sincconv_filter_length = 63
+    def heart_sound_branch(hs):
+        hs = SincConv1D(8, sincconv_filter_length, 1000)(hs)
+        hs = BatchNormalization()(hs)
+        hs = ReLU()(hs)
+        hs = MaxPooling1D(3, padding='same')(hs) # (?, 3250, 128)
+
+        hs = Conv1D(8, 7, activation='relu', padding='same')(hs)
+        hs = BatchNormalization()(hs)
+        hs = MaxPooling1D(2, padding='same')(hs)
+
+        hs = Conv1D(8, 7, activation='relu', padding='same')(hs)
+        hs = BatchNormalization()(hs)
+        return hs
+
+    hs = Lambda(lambda x: K.expand_dims(x[:, :, 0], -1))(heart_sound_input)
+    hs_outputs.append(heart_sound_branch(hs))
+
+    hs = Lambda(lambda x: K.expand_dims(x[:, :, 1], -1))(heart_sound_input)
+    hs_outputs.append(heart_sound_branch(hs))
+
+    hs = Add()(hs_outputs) # (?, 1625, 128)
+    # hs = Maximum()(hs_outputs)
+    # hs = hs_outputs[0]
+    # hs = Concatenate(axis=-1)(hs_outputs)
+
+    number_points_ekg = 10000 // 3 //2
+    number_points_hs = (10000 - sincconv_filter_length + 1) // 3 // 2
+
+    left_crop = (number_points_ekg - number_points_hs) // 2
+    right_crop = (number_points_ekg - number_points_hs) - left_crop
+    ekg = Lambda(lambda x: x[:, left_crop:-right_crop])(ekg) # (?, 1657, 64)
+    output = Concatenate(axis=-1)([hs, ekg])
+    # output = hs
+    output = Conv1D(8, 7, activation='relu', padding='same')(output)
+    output = BatchNormalization()(output)
+    output = MaxPooling1D(2, padding='same')(output) # 829
+
+    output = Conv1D(8, 7, activation='relu', padding='same')(output)
+    output = BatchNormalization()(output)
+    output = MaxPooling1D(2, padding='same')(output) # 415
+
+    output = Conv1D(8, 7, activation='relu', padding='same')(output)
+    output = BatchNormalization()(output)
+    output = MaxPooling1D(2, padding='same')(output) # 208
+
+    output = Conv1D(8, 7, activation='relu', padding='same')(output)
+    output = BatchNormalization()(output)
+    output = MaxPooling1D(2, padding='same')(output) # 104
+
+    output = Conv1D(8, 7, activation='relu', padding='same')(output)
+    output = BatchNormalization()(output)
+    output = MaxPooling1D(2, padding='same')(output) # 52
+
+    output = Conv1D(8, 7, activation='relu', padding='same')(output)
+    output = BatchNormalization()(output)
+    output = non_local_block(output, compression=2, mode='embedded')
+    output = MaxPooling1D(2, padding='same')(output) # 26
+
+    output = Conv1D(8, 7, activation='relu', padding='same')(output)
+    output = non_local_block(output, compression=1, mode='embedded')
+    output = GlobalAveragePooling1D()(output)
+
+    output = Dense(1, activation='linear')(output)
+
+    model = Model(total_input, output)
+    # model.compile('sgd', 'binary_crossentropy', metrics=['acc'])
+    model.compile(Adam(amsgrad=True), loss=_negative_log_likelihood)
+    return model
+
 if __name__ == '__main__':
-    with open('model_v2_config.json', 'w') as f:
-        f.write(get_normal_modelV2().to_yaml())
-
-    K.clear_session()
-
-    with open('model_v2_expanded_config.json', 'w') as f:
-        f.write(get_normal_modelV2(expand_loop=True).to_yaml())
-
-    K.clear_session()
-
-    with open('model_v2_config.txt', 'w') as f:
-        get_normal_modelV2().summary(print_fn=lambda x: f.write(x + '\n'))
-        # f.write(get_normal_modelV2().summary())
-
-    K.clear_session()
-
-    with open('model_v2_expanded_config.txt', 'w') as f:
-        get_normal_modelV2(expand_loop=True).summary(print_fn=lambda x: f.write(x + '\n'))
+    get_survival_hazard_model().summary()

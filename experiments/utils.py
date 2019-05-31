@@ -109,6 +109,33 @@ def patient_split(X, y, rs=42):
 
     return [[X_train, y_train], [X_val, y_val], [X_test, y_test]]
 
+def load_survival_data():
+    dur_df = pd.read_csv('./LVEF_path_dur.csv')
+
+    # 1: event occurred, 0: survived, -1: pass event, ignore
+    censoring_stats = np.ones(dur_df.path.shape) * -1
+    survival_times = np.zeros(dur_df.path.shape)
+
+    # dur_df.follow_dur[i] < 0: this measurement is done after the final follow date
+    # dur_df.ADHF_dur[i] != dur_df.ADHF_dur[i]: no ADHF occurred, survived
+    # dur_df.ADHF_dur[i] < 0: this measurement is done after event
+
+    for i in range(censoring_stats.shape[0]):
+        if dur_df.follow_dur[i] < 0 or\
+            dur_df.ADHF_dur[i] < 0 or\
+            'NG' in dur_df.path[i]: # the measurement is not trust-worthy
+            censoring_stats[i] = -1
+
+        elif dur_df.ADHF_dur[i] != dur_df.ADHF_dur[i]: # Nan
+            censoring_stats[i] = 0 # survived
+            survival_times[i] = dur_df.follow_dur[i]
+
+        else: # event occurred
+            censoring_stats[i] = 1
+            survival_times[i] = dur_df.ADHF_dur[i]
+
+    return censoring_stats, survival_times
+
 if __name__ == '__main__':
     patient_X, patient_y = load_data()
     normal_X = load_normal_data()
