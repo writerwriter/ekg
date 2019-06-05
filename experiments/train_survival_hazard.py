@@ -1,5 +1,5 @@
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0' # use 0-th gpu
+os.environ['CUDA_VISIBLE_DEVICES'] = '1' # use 0-th gpu
 
 import numpy as np
 import better_exceptions; better_exceptions.hook()
@@ -86,9 +86,9 @@ class DataGenerator:
         X_train, X_test, cs_train, cs_test, st_train, st_test = train_test_split(X, cs, st, test_size=0.3, random_state=42)
         X_train, X_valid, cs_train, cs_valid, st_train, st_valid = train_test_split(X_train, cs_train, st_train, test_size=0.3, random_state=42)
 
-        y_train = [cs_train, st_train]
-        y_valid = [cs_valid, st_valid]
-        y_test = [cs_test, st_test]
+        y_train = np.array([cs_train, st_train])
+        y_valid = np.array([cs_valid, st_valid])
+        y_test = np.array([cs_test, st_test])
 
         return [X_train, y_train], [X_valid, y_valid], [X_test, y_test]
 
@@ -130,7 +130,7 @@ class DataGenerator:
                 index_start = int(index_batch * batch_size)
                 index_end = min(X.shape[0], index_start + batch_size)
                 m = np.s_[index_start: index_end]
-                yield this_X[m], cs[m]
+                yield this_X[m], np.array([cs[m], st[m]]).T
 
 class ConcordanceIndex(Callback):
     def __init__(self, train_set, valid_set):
@@ -141,6 +141,7 @@ class ConcordanceIndex(Callback):
     def on_epoch_end(self, epoch, logs={}):
         X_train, (cs_train, st_train) = self.train_set
         X_valid, (cs_valid, st_valid) = self.valid_set
+
         train_cindex = concordance_index(st_train, -self.model.predict(X_train), cs_train)
         valid_cindex = concordance_index(st_valid, -self.model.predict(X_valid), cs_valid)
         print('Concordance index of training set: {:.4f}'.format(train_cindex))
@@ -177,10 +178,11 @@ def train():
         TensorBoard(log_dir=tensorboard_log_dirname)
     ]
 
-    model.fit_generator(g.batch_generator(train_set[0], train_set[1], batch_size=64),
-                 steps_per_epoch=int(np.ceil(train_set[0].shape[0] / 64)),
-                 epochs=500, 
-                 validation_data=(valid_set[0], valid_set[1][0]), 
+    batch_size = 64 # train_set[0].shape[0]
+    model.fit_generator(g.batch_generator(train_set[0], train_set[1], batch_size=batch_size),
+                 steps_per_epoch=int(np.ceil(train_set[0].shape[0] / batch_size)),
+                 epochs=500,
+                 validation_data=(valid_set[0], valid_set[1].T),
                  callbacks=callbacks, shuffle=False)
 
     X_test, (y_test, st_test) = test_set[0], test_set[1]
