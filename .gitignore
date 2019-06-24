@@ -2,3 +2,8 @@
 ._*
 __pycache__
 *.h5
+*.csv
+*.xls
+*.npy
+*.xlsx
+*checkpoints

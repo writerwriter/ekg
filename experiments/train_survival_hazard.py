@@ -30,12 +30,6 @@ class DataGenerator:
         self.preprocessing()
 
     def preprocessing(self):
-        # remove ignoring data
-        keep_indices = (self.patient_censoring_stats != -1)
-        self.patient_X = self.patient_X[keep_indices]
-        self.patient_censoring_stats = self.patient_censoring_stats[keep_indices]
-        self.patient_survival_times = self.patient_survival_times[keep_indices]
-
         # combine normal and patient
         self.X = np.append(self.patient_X, self.normal_X, axis=0) # (?, 10, 10000)
 
@@ -50,8 +44,7 @@ class DataGenerator:
         # change dimension
         # ?, n_channels, n_points -> ?, n_points, n_channels
         self.X = np.swapaxes(self.X, 1, 2)
-
-        self.y = (self.cencsoring_stats, self.survival_times)
+        self.y = np.array([self.cencsoring_stats, self.survival_times]).T # shape: [number_scan, 2]
 
     def X_shape(self):
         return self.X.shape[1:]
@@ -79,7 +72,7 @@ class DataGenerator:
         return self.X, self.y
 
     @staticmethod
-    def split(X, y, rs=42):
+    def whole_split(X, y, rs=42): # NOTE: deprecated
         cs, st = y
 
         # do random split
@@ -93,6 +86,35 @@ class DataGenerator:
         return [X_train, y_train], [X_valid, y_valid], [X_test, y_test]
 
     @staticmethod
+    def split(X, y, rs=42): # NOTE: this must be done before data cleaning
+        # do patient split
+        patient_training_set, patient_valid_set, patient_test_set  = patient_split(X[:852, ...], y[:852, ...])
+
+        # do normal split
+        X_train, X_test, y_train, y_test = train_test_split(X[852:, ...], y[852:, ...], test_size=0.3, random_state=42)
+        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.3, random_state=42)
+
+        # combine
+        X_train = np.append(X_train, patient_training_set[0], axis=0)
+        y_train = np.append(y_train, patient_training_set[1], axis=0)
+
+        X_valid = np.append(X_valid, patient_valid_set[0], axis=0)
+        y_valid = np.append(y_valid, patient_valid_set[1], axis=0)
+
+        X_test = np.append(X_test, patient_test_set[0], axis=0)
+        y_test = np.append(y_test, patient_test_set[1], axis=0)
+
+        return [X_train, y_train], [X_valid, y_valid], [X_test, y_test]
+
+    @staticmethod
+    def cleaned_data(data_set):
+        X, y = data_set
+        cs, st = y[:, 0], y[:, 1]
+        keep_indices = (cs != -1)
+        X, cs, st = X[keep_indices], cs[keep_indices], st[keep_indices]
+        return [X, np.array([cs, st]).T]
+
+    @staticmethod
     def shuffle(X, y, batch_size):
         def sort_batch(X, cs, st):
             sorting_indices = np.argsort(st)[::-1]
@@ -102,13 +124,12 @@ class DataGenerator:
             return X, cs, st
 
         # copy may not be needed, but is done anyway
-        X, (cs, st) = copy.deepcopy(X), copy.deepcopy(y)
+        X, y = copy.deepcopy(X), copy.deepcopy(y)
+        cs, st = y[:, 0], y[:, 1]
 
         # shuffle X and y
         shuffled_indices = np.random.choice(list(range(X.shape[0])), size=X.shape[0], replace=False)
-        X = X[shuffled_indices]
-        cs = cs[shuffled_indices]
-        st = st[shuffled_indices]
+        X, cs, st = X[shuffled_indices], cs[shuffled_indices], st[shuffled_indices]
 
         for index_batch in range(int(np.ceil(X.shape[0] / batch_size))):
             index_start = int(index_batch * batch_size)
@@ -124,7 +145,8 @@ class DataGenerator:
             if shuffle:
                 this_X, cs, st = DataGenerator.shuffle(X, y, batch_size)
             else:
-                this_X, (cs, st) = X, y
+                this_X = X
+                cs, st = y[:, 0], y[:, 1]
 
             for index_batch in range(int(np.ceil(X.shape[0] / batch_size))):
                 index_start = int(index_batch * batch_size)
@@ -139,8 +161,10 @@ class ConcordanceIndex(Callback):
         self.valid_set = valid_set
 
     def on_epoch_end(self, epoch, logs={}):
-        X_train, (cs_train, st_train) = self.train_set
-        X_valid, (cs_valid, st_valid) = self.valid_set
+        X_train = self.train_set[0]
+        cs_train, st_train = self.train_set[1][:, 0], self.train_set[1][:, 1]
+        X_valid = self.valid_set[0]
+        cs_valid, st_valid = self.valid_set[1][:, 0], self.valid_set[1][:, 1]
 
         train_cindex = concordance_index(st_train, -self.model.predict(X_train), cs_train)
         valid_cindex = concordance_index(st_valid, -self.model.predict(X_valid), cs_valid)
@@ -151,6 +175,7 @@ def train():
     g = DataGenerator()
     X, y = g.data()
     train_set, valid_set, test_set = g.split(X, y)
+    train_set, valid_set, test_set = g.cleaned_data(train_set), g.cleaned_data(valid_set), g.cleaned_data(test_set)
 
     model_checkpoints_dirname = 'survival_hazard_model_checkpoints/'+datetime.now().strftime('%Y%m%d_%H%M_%S')
     tensorboard_log_dirname = model_checkpoints_dirname + '/logs'
@@ -170,7 +195,7 @@ def train():
     model.summary()
 
     # shuffle and sort validation set first
-    valid_set[0], valid_set[1][0], valid_set[1][1] = g.shuffle(valid_set[0], valid_set[1], batch_size=64)
+    valid_set[0], valid_set[1][:, 0], valid_set[1][:, 1] = g.shuffle(valid_set[0], valid_set[1], batch_size=64)
     callbacks = [
         # EarlyStopping(patience=5),
         ConcordanceIndex(train_set, valid_set),
@@ -182,7 +207,7 @@ def train():
     model.fit_generator(g.batch_generator(train_set[0], train_set[1], batch_size=batch_size),
                  steps_per_epoch=int(np.ceil(train_set[0].shape[0] / batch_size)),
                  epochs=500,
-                 validation_data=(valid_set[0], valid_set[1].T),
+                 validation_data=(valid_set[0], valid_set[1]),
                  callbacks=callbacks, shuffle=False)
 
     X_test, (y_test, st_test) = test_set[0], test_set[1]

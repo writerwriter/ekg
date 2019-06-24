@@ -392,6 +392,17 @@ def get_survival_hazard_model():
         neg_likelihood = -K.sum(censored_likelihood)
         return neg_likelihood
 
+    def cindex_loss(y, risk):
+        cs, st = tf.cast(y[:, 0:1], tf.float32), tf.cast(y[:, 1:2], tf.float32)
+
+        risk_comparison_matrix = tf.subtract(tf.expand_dims(risk, -1), risk)
+
+        risk_larger = K.softsign(risk_comparison_matrix) + 1
+        risk_equal = tf.cast(tf.abs(risk_comparison_matrix) < 1e-3, tf.float32) * 0.5
+        time_comparison = tf.cast(tf.subtract(tf.expand_dims(st, -1), st) < 0.0, tf.float32)
+        ratio = tf.reduce_sum( (tf.reduce_sum(risk_larger * time_comparison, 1) + tf.reduce_sum(risk_equal * time_comparison, 1))*cs ) / tf.reduce_sum(tf.reduce_sum(time_comparison, 1) * cs)
+        return -ratio
+
     def cindex(y, risk):
         cs, st = tf.cast(y[:, 0:1], tf.float32), tf.cast(y[:, 1:2], tf.float32)
 
@@ -401,7 +412,7 @@ def get_survival_hazard_model():
         risk_equal = tf.cast(tf.abs(risk_comparison_matrix) < 1e-3, tf.float32) * 0.5
         time_comparison = tf.cast(tf.subtract(tf.expand_dims(st, -1), st) < 0.0, tf.float32)
         ratio = tf.reduce_sum( (tf.reduce_sum(risk_larger * time_comparison, 1) + tf.reduce_sum(risk_equal * time_comparison, 1))*cs ) / tf.reduce_sum(tf.reduce_sum(time_comparison, 1) * cs)
-        return ratio # tf.cast(ratio > 1, tf.float32)
+        return ratio
 
     total_input = Input((10000, 10))
     ekg_input = Lambda(lambda x: x[:, :, :8])(total_input) # (10000, 8)
@@ -478,6 +489,7 @@ def get_survival_hazard_model():
     output = MaxPooling1D(2, padding='same')(output) # 26
 
     output = Conv1D(8, 7, activation='relu', padding='same')(output)
+    output = BatchNormalization()(output)
     # output = non_local_block(output, compression=1, mode='embedded')
     output = GlobalAveragePooling1D()(output)
 
@@ -485,8 +497,7 @@ def get_survival_hazard_model():
     output = Dense(1, activation='linear')(output)
 
     model = Model(total_input, output)
-    # model.compile('sgd', 'binary_crossentropy', metrics=['acc'])
-    model.compile(Adam(amsgrad=True), loss=_negative_log_likelihood, metrics=[cindex])
+    model.compile(Adam(amsgrad=True), loss=cindex_loss, metrics=[cindex]) # _negative_log_likelihood
     return model
 
 if __name__ == '__main__':
