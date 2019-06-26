@@ -27,6 +27,7 @@ from keras.layers import Input, Lambda, BatchNormalization, GlobalAveragePooling
 from keras.layers import Conv1D, MaxPooling1D, Dense, Add, Concatenate, Flatten, Dropout, LSTM, Reshape, SeparableConv1D
 from keras.utils import conv_utils
 
+from ekg.layers import LeftCropLike
 from ekg.layers.sincnet import SincConv1D
 from ekg.layers.non_local import non_local_block
 from ekg.utils.data_utils import patient_split
@@ -37,54 +38,54 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard, ReduceL
 import wandb
 from wandb.keras import WandbCallback
 wandb.init(project='ekg-abnormal_detection', entity='toosyou')
-wandb.config.sincconv_filter_length = 31
-wandb.config.sincconv_nfilters = 16
+
+def set_wandb_config(params, overwrite=False):
+    for key, value in params.items():
+        if key not in wandb.config._items or overwrite:
+            wandb.config.update({key: value})
+
+set_wandb_config({
+    'sincconv_filter_length': 31,
+    'sincconv_nfilters': 16,
+    'ekg_branch_nlayers': 2,
+    'ekg_kernel_length': 7,
+
+    'hs_branch_nlayers': 2,
+    'hs_kernel_length': 7,
+
+    'final_nlayers': 7,
+    'final_kernel_length': 7,
+    'final_nonlocal_nlayers': 2
+})
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), '..', 'models')
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 
 def get_model():
-    class LeftCropLike(keras.layers.Layer):
-        def call(self, inputs, **kwargs):
-            source, target = inputs
-            source_shape = K.shape(source)
-            target_shape = K.shape(target)
-            return source[:, source_shape[1]-target_shape[1]: ]
+    def heart_sound_branch(hs):
+        sincconv_filter_length = wandb.config.sincconv_filter_length - (wandb.config.sincconv_filter_length+1) % 2
+        hs = SincConv1D(wandb.config.sincconv_nfilters, sincconv_filter_length, 1000)(hs)
+        hs = BatchNormalization()(hs)
 
-        def compute_output_shape(self, input_shape):
-            return input_shape[1]
+        for _ in wandb.config.hs_branch_nlayers:
+            hs = Conv1D(8, wandb.config.hs_kernel_length, activation='relu', padding='same')(hs)
+            hs = BatchNormalization()(hs)
+            hs = MaxPooling1D(3, padding='same')(hs) # (?, 3250, 128)
+        return hs
 
     total_input = Input((10000, 10))
     ekg_input = Lambda(lambda x: x[:, :, :8])(total_input) # (10000, 8)
     heart_sound_input = Lambda(lambda x: x[:, :, 8:])(total_input) # (10000, 2)
 
-    ekg = Conv1D(8, 7, activation='relu', padding='same')(ekg_input)
-    ekg = BatchNormalization()(ekg)
-    ekg = MaxPooling1D(3, padding='same')(ekg)
-
-    ekg = Conv1D(8, 7, activation='relu', padding='same')(ekg)
-    ekg = BatchNormalization()(ekg)
-    ekg = MaxPooling1D(2, padding='same')(ekg) # (?, 1666, 64)
+    # ekg branch
+    ekg = ekg_input
+    for _ in range(wandb.config.ekg_branch_nlayers):
+        ekg = Conv1D(8, wandb.config.ekg_kernel_length, activation='relu', padding='same')(ekg_input)
+        ekg = BatchNormalization()(ekg)
+        ekg = MaxPooling1D(3, padding='same')(ekg)
 
     # heart sound branch
     hs_outputs = list()
-
-    sincconv_filter_length = wandb.config.sincconv_filter_length - (wandb.config.sincconv_filter_length+1) % 2
-    def heart_sound_branch(hs):
-        hs = SincConv1D(wandb.config.sincconv_nfilters, sincconv_filter_length, 1000)(hs)
-        hs = BatchNormalization()(hs)
-        hs = Conv1D(8, 7, activation='relu', padding='same')(hs)
-        hs = BatchNormalization()(hs)
-        hs = MaxPooling1D(3, padding='same')(hs) # (?, 3250, 128)
-
-        hs = Conv1D(8, 7, activation='relu', padding='same')(hs)
-        hs = BatchNormalization()(hs)
-        hs = MaxPooling1D(2, padding='same')(hs)
-
-        hs = Conv1D(8, 7, activation='relu', padding='same')(hs)
-        hs = BatchNormalization()(hs)
-        return hs
-
     hs = Lambda(lambda x: K.expand_dims(x[:, :, 0], -1))(heart_sound_input)
     hs_outputs.append(heart_sound_branch(hs))
 
@@ -92,46 +93,24 @@ def get_model():
     hs_outputs.append(heart_sound_branch(hs))
 
     hs = Add()(hs_outputs) # (?, 1625, 128)
-    # hs = Maximum()(hs_outputs)
-    # hs = hs_outputs[0]
-    # hs = Concatenate(axis=-1)(hs_outputs)
-
     ekg = LeftCropLike()([ekg, hs])
     output = Concatenate(axis=-1)([hs, ekg])
-    # output = hs
-    output = Conv1D(8, 7, activation='relu', padding='same')(output)
-    output = BatchNormalization()(output)
-    output = MaxPooling1D(2, padding='same')(output) # 829
 
-    output = Conv1D(8, 7, activation='relu', padding='same')(output)
-    output = BatchNormalization()(output)
-    output = MaxPooling1D(2, padding='same')(output) # 415
+    # final layers
+    for i in range(wandb.config.final_nlayers):
+        output = Conv1D(8, wandb.config.final_kernel_length, activation='relu', padding='same')(output)
+        output = BatchNormalization()(output)
 
-    output = Conv1D(8, 7, activation='relu', padding='same')(output)
-    output = BatchNormalization()(output)
-    output = MaxPooling1D(2, padding='same')(output) # 208
+        if i >= wandb.config.final_nlayers - wandb.config.final_nonlocal_nlayers: # the final 'final_nonlocal_nlayers' layers
+            output = output = non_local_block(output, compression=2, mode='embedded')
 
-    output = Conv1D(8, 7, activation='relu', padding='same')(output)
-    output = BatchNormalization()(output)
-    output = MaxPooling1D(2, padding='same')(output) # 104
+        if i != wandb.config.final_nlayers-1: # not the final output
+            output = MaxPooling1D(2, padding='same')(output) # 829
 
-    output = Conv1D(8, 7, activation='relu', padding='same')(output)
-    output = BatchNormalization()(output)
-    output = MaxPooling1D(2, padding='same')(output) # 52
-
-    output = Conv1D(8, 7, activation='relu', padding='same')(output)
-    output = BatchNormalization()(output)
-    output = non_local_block(output, compression=2, mode='embedded')
-    output = MaxPooling1D(2, padding='same')(output) # 26
-
-    output = Conv1D(8, 7, activation='relu', padding='same')(output)
-    output = non_local_block(output, compression=1, mode='embedded')
     output = GlobalAveragePooling1D()(output)
-
     output = Dense(2, activation='softmax')(output)
 
     model = Model(total_input, output)
-    # model.compile('sgd', 'binary_crossentropy', metrics=['acc'])
     model.compile(Adam(amsgrad=True), 'binary_crossentropy', metrics=['acc'])
     return model
 
