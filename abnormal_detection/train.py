@@ -37,25 +37,26 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard, ReduceL
 
 import wandb
 from wandb.keras import WandbCallback
-wandb.init(project='ekg-abnormal_detection', entity='toosyou')
+wandb.init(name='searched_best', project='ekg-abnormal_detection', entity='toosyou')
 
 def set_wandb_config(params, overwrite=False):
     for key, value in params.items():
         if key not in wandb.config._items or overwrite:
             wandb.config.update({key: value})
 
+# search result
 set_wandb_config({
     'sincconv_filter_length': 31,
-    'sincconv_nfilters': 16,
-    'ekg_branch_nlayers': 2,
+    'sincconv_nfilters': 8,
+
+    'branch_nlayers': 1,
+
     'ekg_kernel_length': 7,
+    'hs_kernel_length': 5,
 
-    'hs_branch_nlayers': 2,
-    'hs_kernel_length': 7,
-
-    'final_nlayers': 7,
-    'final_kernel_length': 7,
-    'final_nonlocal_nlayers': 2
+    'final_nlayers': 3,
+    'final_kernel_length': 5,
+    'final_nonlocal_nlayers': 0
 })
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), '..', 'models')
@@ -67,7 +68,7 @@ def get_model():
         hs = SincConv1D(wandb.config.sincconv_nfilters, sincconv_filter_length, 1000)(hs)
         hs = BatchNormalization()(hs)
 
-        for _ in wandb.config.hs_branch_nlayers:
+        for _ in range(wandb.config.branch_nlayers):
             hs = Conv1D(8, wandb.config.hs_kernel_length, activation='relu', padding='same')(hs)
             hs = BatchNormalization()(hs)
             hs = MaxPooling1D(3, padding='same')(hs) # (?, 3250, 128)
@@ -79,7 +80,7 @@ def get_model():
 
     # ekg branch
     ekg = ekg_input
-    for _ in range(wandb.config.ekg_branch_nlayers):
+    for _ in range(wandb.config.branch_nlayers):
         ekg = Conv1D(8, wandb.config.ekg_kernel_length, activation='relu', padding='same')(ekg_input)
         ekg = BatchNormalization()(ekg)
         ekg = MaxPooling1D(3, padding='same')(ekg)
@@ -105,7 +106,7 @@ def get_model():
             output = output = non_local_block(output, compression=2, mode='embedded')
 
         if i != wandb.config.final_nlayers-1: # not the final output
-            output = MaxPooling1D(2, padding='same')(output) # 829
+            output = MaxPooling1D(2, padding='same')(output)
 
     output = GlobalAveragePooling1D()(output)
     output = Dense(2, activation='softmax')(output)
@@ -197,8 +198,8 @@ def train():
     model.summary()
 
     callbacks = [
-        # EarlyStopping(patience=62),
-        # ReduceLROnPlateau(patience=25, cooldown=5, verbose=1),
+        EarlyStopping(monitor='val_loss', patience=20),
+        ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         ModelCheckpoint(model_checkpoints_dirname + '/{epoch:02d}-{val_loss:.2f}.h5', verbose=1, save_best_only=True),
         # TensorBoard(log_dir=tensorboard_log_dirname),
         WandbCallback(log_gradients=True, training_data=train_set)
@@ -207,7 +208,7 @@ def train():
     print(1. - valid_set[1][:, 0].sum() / valid_set[1][:, 0].shape[0])
     print(1. - train_set[1][:, 0].sum() / train_set[1][:, 0].shape[0])
 
-    model.fit(train_set[0], train_set[1], batch_size=64, epochs=40, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
+    model.fit(train_set[0], train_set[1], batch_size=64, epochs=100, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
 
     y_pred = np.argmax(model.predict(test_set[0], batch_size=64), axis=1)
     y_true = test_set[1][:, 1]
