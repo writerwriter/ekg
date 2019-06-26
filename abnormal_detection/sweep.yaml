@@ -1,0 +1,23 @@
+description: hyperparameter search for abnormal detection
+
+# Training script to run
+program: train.py
+
+# Method can be bayes, random, grid
+method: bayes
+
+# Metric to optimize
+metric:
+  name: val_loss
+  goal: minimize
+
+# Should we early terminate runs
+early_terminate:
+  type: hyperband
+
+# Parameters to search over
+parameters:
+  sincconv_filter_length:
+    values: [15, 31, 63, 93]
+  sincconv_nfilters:
+    values: [8, 16]
