@@ -8,12 +8,13 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from ekg.utils.data_utils import patient_split
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
+NUM_PATIENT_X = 852
 
 class DataGenerator:
     def __init__(self):
         self.X, self.y = None, None
-        self.patient_X = np.load(os.path.join(DATA_DIR, 'patient_X.npy')) # (852, 10, 10000)
-        self.normal_X = np.load(os.path.join(DATA_DIR, 'normal_X.npy')) # (103, 10, 10000)
+        self.patient_X = np.load(os.path.join(DATA_DIR, 'patient_X.npy')) # (NUM_PATIENT_X, 10, 10000)
+        self.normal_X = np.load(os.path.join(DATA_DIR, 'normal_X.npy')) # (?, 10, 10000)
         self.preprocessing()
 
     def preprocessing(self):
@@ -56,11 +57,11 @@ class DataGenerator:
     @staticmethod
     def split(X, y, rs=42):
         # do patient split
-        patient_training_set, patient_valid_set, patient_test_set  = patient_split(X[:852, ...], y[:852, ...])
+        patient_training_set, patient_valid_set, patient_test_set  = patient_split(X[:NUM_PATIENT_X, ...], y[:NUM_PATIENT_X, ...], rs)
 
         # do normal split
-        X_train, X_test, y_train, y_test = train_test_split(X[852:, ...], y[852:, ...], test_size=0.3, random_state=42)
-        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.3, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(X[NUM_PATIENT_X:, ...], y[NUM_PATIENT_X:, ...], test_size=0.3, random_state=rs)
+        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.3, random_state=rs)
 
         # combine
         X_train = np.append(X_train, patient_training_set[0], axis=0)
