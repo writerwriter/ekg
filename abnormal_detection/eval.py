@@ -27,5 +27,6 @@ def evaluation(model, test_set):
 
 if __name__ == '__main__':
     model = load_model(sys.argv[1], custom_objects={'SincConv1D': SincConv1D, 'LeftCropLike': LeftCropLike}, compile=False)
-    train_set, valid_set, test_set = DataGenerator().get()
+    model.summary()
+    train_set, valid_set, test_set = DataGenerator(remove_dirty=2).get()
     evaluation(model, test_set)

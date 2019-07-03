@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import numpy as np
-import sklearn.metrics
 from datetime import datetime
 import pickle
 import better_exceptions; better_exceptions.hook()
@@ -18,6 +17,7 @@ import os, sys
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
+import keras
 from keras.optimizers import Adam
 from keras.models import Model
 from keras.layers import Input, Lambda, BatchNormalization, GlobalAveragePooling1D, ReLU, Bidirectional, Maximum
@@ -35,7 +35,7 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard, ReduceL
 
 import wandb
 from wandb.keras import WandbCallback
-wandb.init(name='searched_best', project='ekg-abnormal_detection', entity='toosyou')
+wandb.init(name='remove_dirty2_best_param', project='ekg-abnormal_detection', entity='toosyou')
 
 def set_wandb_config(params, overwrite=False):
     for key, value in params.items():
@@ -49,12 +49,14 @@ set_wandb_config({
 
     'branch_nlayers': 1,
 
-    'ekg_kernel_length': 7,
+    'ekg_kernel_length': 21,
     'hs_kernel_length': 5,
 
-    'final_nlayers': 3,
-    'final_kernel_length': 5,
-    'final_nonlocal_nlayers': 0
+    'final_nlayers': 5,
+    'final_kernel_length': 13,
+    'final_nonlocal_nlayers': 0,
+
+    'remove_dirty': 2
 })
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), '..', 'models')
@@ -113,8 +115,33 @@ def get_model():
     model.compile(Adam(amsgrad=True), 'binary_crossentropy', metrics=['acc'])
     return model
 
+class LogBest(keras.callbacks.Callback):
+    def __init__(self):
+        self.best_val_loss = np.inf
+        self.best_val_acc = 0
+        self.best_loss = np.inf
+        self.best_acc = 0
+        self.best_epoch = -1
+        super().__init__()
+
+    def on_epoch_end(self, epoch, logs={}):
+        if self.best_val_loss > logs.get('val_loss'): # update
+            self.best_val_loss = logs.get('val_loss')
+            self.best_val_acc = logs.get('val_acc')
+            self.best_loss = logs.get('loss')
+            self.best_acc = logs.get('acc')
+            self.best_epoch = epoch
+
+            wandb.log({
+                'best_val_loss': self.best_val_loss,
+                'best_val_acc': self.best_val_acc,
+                'best_loss': self.best_loss,
+                'best_acc': self.best_acc,
+                'best_epoch': self.best_epoch
+            }, commit=False)
+
 def train():
-    g = DataGenerator()
+    g = DataGenerator(remove_dirty=wandb.config.remove_dirty)
     train_set, valid_set, test_set = g.get()
 
     model_checkpoints_dirname = os.path.join(MODEL_DIR, 'ad_checkpoints', datetime.now().strftime('%Y_%m%d_%H%M_%S'))
@@ -130,17 +157,15 @@ def train():
     model.summary()
 
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=20),
-        ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
-        ModelCheckpoint(model_checkpoints_dirname + '/{epoch:02d}-{val_loss:.2f}.h5', verbose=1, save_best_only=True),
+        EarlyStopping(monitor='val_loss', patience=10),
+        # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
+        # ModelCheckpoint(model_checkpoints_dirname + '/{epoch:02d}-{val_loss:.2f}.h5', verbose=1, save_best_only=True),
         # TensorBoard(log_dir=tensorboard_log_dirname),
-        WandbCallback(log_gradients=True, training_data=train_set)
+        WandbCallback(log_gradients=True, training_data=train_set),
+        LogBest()
     ]
 
-    print(1. - valid_set[1][:, 0].sum() / valid_set[1][:, 0].shape[0])
-    print(1. - train_set[1][:, 0].sum() / train_set[1][:, 0].shape[0])
-
-    model.fit(train_set[0], train_set[1], batch_size=64, epochs=100, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
+    model.fit(train_set[0], train_set[1], batch_size=64, epochs=40, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
 
     evaluation(model, test_set)
 

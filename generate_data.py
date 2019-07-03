@@ -15,11 +15,21 @@ def preprocessing(X):
             X[i] = xi
 
 if __name__ == '__main__':
-    patient_X = load_patient_data()
     normal_X = load_normal_data()
-
-    preprocessing(patient_X)
     preprocessing(normal_X)
-
-    np.save('data/patient_X.npy', patient_X)
     np.save('data/normal_X.npy', normal_X)
+
+    patient_X, patient_id = load_patient_data(remove_dirty=0)
+    preprocessing(patient_X)
+    np.save('data/patient_X.npy', patient_X)
+    np.save('data/patient_id.npy', patient_id)
+
+    cleaned_patient_X, cleaned_patient_id = load_patient_data(remove_dirty=1)
+    preprocessing(cleaned_patient_X)
+    np.save('data/cleaned_1_patient_X.npy', cleaned_patient_X)
+    np.save('data/cleaned_1_patient_id.npy', cleaned_patient_id)
+
+    cleaned_patient_X, cleaned_patient_id = load_patient_data(remove_dirty=2)
+    preprocessing(cleaned_patient_X)
+    np.save('data/cleaned_2_patient_X.npy', cleaned_patient_X)
+    np.save('data/cleaned_2_patient_id.npy', cleaned_patient_id)

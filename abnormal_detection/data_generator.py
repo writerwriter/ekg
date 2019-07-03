@@ -1,5 +1,6 @@
 import numpy as np
 import keras
+import sklearn
 from sklearn.model_selection import train_test_split
 
 import os, sys
@@ -8,12 +9,17 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from ekg.utils.data_utils import patient_split
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
-NUM_PATIENT_X = 852
 
 class DataGenerator:
-    def __init__(self):
+    def __init__(self, remove_dirty=0):
         self.X, self.y = None, None
-        self.patient_X = np.load(os.path.join(DATA_DIR, 'patient_X.npy')) # (NUM_PATIENT_X, 10, 10000)
+        if remove_dirty > 0:
+            self.patient_X = np.load(os.path.join(DATA_DIR, 'cleaned_{:d}_patient_X.npy'.format(remove_dirty)))
+            self.patient_id = np.load(os.path.join(DATA_DIR, 'cleaned_{:d}_patient_id.npy'.format(remove_dirty)))
+        else:
+            self.patient_X = np.load(os.path.join(DATA_DIR, 'patient_X.npy')) # (?, 10, 10000)
+            self.patient_id = np.load(os.path.join(DATA_DIR, 'patient_id.npy'))
+
         self.normal_X = np.load(os.path.join(DATA_DIR, 'normal_X.npy')) # (?, 10, 10000)
         self.preprocessing()
 
@@ -30,7 +36,7 @@ class DataGenerator:
         self.y = keras.utils.to_categorical(self.y, num_classes=2) # to one-hot
 
     def get(self):
-        train_set, valid_set, test_set = self.split(self.X, self.y)
+        train_set, valid_set, test_set = self.split()
 
         # do normalize using means and stds from training data
         train_set[0], self.means_and_stds = DataGenerator.normalize(train_set[0])
@@ -54,13 +60,14 @@ class DataGenerator:
             normalized_X[..., i] = normalized_X[..., i] / stds[i]
         return normalized_X, (means, stds)
 
-    @staticmethod
-    def split(X, y, rs=42):
+    def split(self, rs=42):
+        number_patient = self.patient_X.shape[0]
+
         # do patient split
-        patient_training_set, patient_valid_set, patient_test_set  = patient_split(X[:NUM_PATIENT_X, ...], y[:NUM_PATIENT_X, ...], rs)
+        patient_training_set, patient_valid_set, patient_test_set  = patient_split(self.X[:number_patient], self.y[:number_patient], self.patient_id, rs)
 
         # do normal split
-        X_train, X_test, y_train, y_test = train_test_split(X[NUM_PATIENT_X:, ...], y[NUM_PATIENT_X:, ...], test_size=0.3, random_state=rs)
+        X_train, X_test, y_train, y_test = train_test_split(self.X[number_patient: ], self.y[number_patient: ], test_size=0.3, random_state=rs)
         X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.3, random_state=rs)
 
         # combine
@@ -74,3 +81,19 @@ class DataGenerator:
         y_test = np.append(y_test, patient_test_set[1], axis=0)
 
         return [X_train, y_train], [X_valid, y_valid], [X_test, y_test]
+
+    @staticmethod
+    def augment(X, y):
+        return X, y
+
+    @staticmethod
+    def batch_generator(X, y, batch_size, shuffle=True, data_augmentation=True):
+        while True:
+            if shuffle:
+                X, y = sklearn.utils.shuffle(X, y)
+
+            for index_batch in range(int(np.ceil(X.shape[0] / batch_size))):
+                index_start = int(index_batch * batch_size)
+                index_end = min(X.shape[0], index_start + batch_size)
+                m = np.s_[index_start: index_end]
+                yield X[m], y[m]

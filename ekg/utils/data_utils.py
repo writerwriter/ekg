@@ -15,11 +15,23 @@ config.read(os.path.join(os.path.dirname(__file__), '..', 'configs.ini'))
 OUTCOME_FILENAME = config['Paths']['outcome']
 LVEF_PATH_FILENAME = config['Paths']['lvef_path']
 LVEF_PATH_DUR_FILENAME = config['Paths']['lvef_path_dur']
+DIRTYDATA_INDICES_FILENAME = config['Paths']['dirtydata_indices']
 
 BIG_EXAM_DIR = config['Paths']['big_exam_dir']
 BIG_EXAM_NORMAL_DIRS = config['Paths']['big_exam_normal_dirs'].split(', ')
 
 NUM_PROCESSES = mp.cpu_count()*2
+
+class DataAugmenter:
+    def __init__(self, indices_channel_ekg, indices_channel_hs):
+        self.indices_channel_ekg = indices_channel_ekg
+        self.indices_channel_hs = indices_channel_hs
+
+    def ekg_scaling(self, X, ratio):
+        X[self.indices_channel_ekg] *= ratio
+
+    def hs_scaling(self, X, ratio):
+        X[self.indices_channel_hs] *= ratio
 
 def to_spectrogram(data):
     rtn = list()
@@ -54,12 +66,33 @@ def load_normal_data(do_bandpass_filter=True, filter_lowcut=30, filter_highcut=1
         filenames = filenames + get_normal_filenames(dirname)
     return mp_get_ekg(filenames, do_bandpass_filter, filter_lowcut, filter_highcut, 'Loading normal data')
 
-def load_patient_data(do_bandpass_filter=True, filter_lowcut=30, filter_highcut=100):
-    path_lvef_df = pd.read_csv(LVEF_PATH_FILENAME, header=None, names=['path', 'LVEF'])
+def load_patient_data(do_bandpass_filter=True, filter_lowcut=30, filter_highcut=100, remove_dirty=0):
+    '''
+        remove_dirty:
+            0 - don't remove dirty data
+            1 - remove dirty data
+            2 - remove dirty data and not-so-dirty data
+    '''
+    def is_dirty(pi, dirtydata_indices_df):
+        for dp in dirtydata_indices_df['dirty']:
+            if dp == dp and dp in pi: return True
+        if remove_dirty == 2: # not-so-dirty data
+            for dp in dirtydata_indices_df['gray_zone']:
+                if dp == dp and dp in pi: return True
+        return False
 
-    filenames = list(map(lambda x: BIG_EXAM_DIR+x, path_lvef_df['path']))
+    path_lvef_df = pd.read_csv(LVEF_PATH_FILENAME, header=None, names=['path', 'LVEF'])
+    paths = path_lvef_df['path'].values
+    # clean up
+    if remove_dirty > 0:
+        dirtydata_indices_df = pd.read_excel(DIRTYDATA_INDICES_FILENAME)
+        paths = np.array([p for p in paths if not is_dirty(p, dirtydata_indices_df)])
+
+    filenames = list(map(lambda x: BIG_EXAM_DIR+x, paths))
+    patient_id = np.array([p.split('/')[1] for p in paths])
     X = mp_get_ekg(filenames, do_bandpass_filter, filter_lowcut, filter_highcut, 'Loading patient data')
-    return X
+
+    return X, patient_id
 
 def load_patient_LVEF():
     path_lvef_df = pd.read_csv(LVEF_PATH_FILENAME, header=None, names=['path', 'LVEF'])
@@ -83,38 +116,22 @@ def load_target(target_name, dtype=int):
 
     return np.array(target)
 
-def patient_split(X, y, rs=42):
-    path_lvef_df = pd.read_csv(LVEF_PATH_FILENAME, header=None, names=['path', 'LVEF'])
-
-    # get the unique patient ids
-    patient_id = list()
-    for p in path_lvef_df['path']:
-        patient_id.append(p.split('/')[1])
-    patient_id = np.unique(np.array(patient_id))
+def patient_split(X, y, patient_id, rs=42):
+    unique_patient_id = np.unique(np.array(patient_id))
 
     # split patient id
-    train_id, test_id = train_test_split(patient_id, test_size=0.3, random_state=rs)
+    train_id, test_id = train_test_split(unique_patient_id, test_size=0.3, random_state=rs)
     train_id, valid_id = train_test_split(train_id, test_size=0.3, random_state=rs)
 
-    X_train, X_val, X_test = list(), list(), list()
-    y_train, y_val, y_test = list(), list(), list()
+    _m_train    = [pi in train_id for pi in patient_id]
+    _m_test     = [pi in test_id for pi in patient_id]
+    _m_valid    = [pi in valid_id for pi in patient_id]
 
-    for i, p in enumerate(path_lvef_df['path']):
-        pid = p.split('/')[1]
-        if pid in train_id:
-            X_train.append(X[i])
-            y_train.append(y[i])
-        elif pid in valid_id:
-            X_val.append(X[i])
-            y_val.append(y[i])
-        else:
-            X_test.append(X[i])
-            y_test.append(y[i])
+    X_train, y_train    = X[_m_train],  y[_m_train]
+    X_test, y_test      = X[_m_test],   y[_m_test]
+    X_valid, y_valid    = X[_m_valid],  y[_m_valid]
 
-    X_train, X_val, X_test = np.array(X_train), np.array(X_val), np.array(X_test)
-    y_train, y_val, y_test = np.array(y_train), np.array(y_val), np.array(y_test)
-
-    return [[X_train, y_train], [X_val, y_val], [X_test, y_test]]
+    return [[X_train, y_train], [X_valid, y_valid], [X_test, y_test]]
 
 def load_survival_data():
     dur_df = pd.read_csv(LVEF_PATH_DUR_FILENAME)
@@ -144,5 +161,5 @@ def load_survival_data():
     return censoring_stats, survival_times
 
 if __name__ == '__main__':
-    # patient_X = load_patient_data()
-    normal_X = load_normal_data()
+    patient_X, patient_id = load_patient_data(remove_dirty=2)
+    # normal_X = load_normal_data()
