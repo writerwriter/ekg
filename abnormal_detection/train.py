@@ -56,7 +56,7 @@ set_wandb_config({
     'final_kernel_length': 13,
     'final_nonlocal_nlayers': 0,
 
-    'remove_dirty': 2
+    'remove_dirty': 2,
 })
 
 MODEL_DIR = os.path.join(os.path.dirname(__file__), '..', 'models')
@@ -74,7 +74,8 @@ def get_model():
             hs = MaxPooling1D(3, padding='same')(hs) # (?, 3250, 128)
         return hs
 
-    total_input = Input((10000, 10))
+    # total_input = Input((10000, 10))
+    total_input = Input((None, 10))
     ekg_input = Lambda(lambda x: x[:, :, :8])(total_input) # (10000, 8)
     heart_sound_input = Lambda(lambda x: x[:, :, 8:])(total_input) # (10000, 2)
 
@@ -141,7 +142,10 @@ class LogBest(keras.callbacks.Callback):
             }, commit=False)
 
 def train():
-    g = DataGenerator(remove_dirty=wandb.config.remove_dirty)
+    g = DataGenerator(remove_dirty=wandb.config.remove_dirty,
+                        ekg_scaling_prob=wandb.config.ekg_scaling_prob,
+                        hs_scaling_prob=wandb.config.hs_scaling_prob,
+                        time_stretch_prob=wandb.config.time_stretch_prob)
     train_set, valid_set, test_set = g.get()
 
     model_checkpoints_dirname = os.path.join(MODEL_DIR, 'ad_checkpoints', datetime.now().strftime('%Y_%m%d_%H%M_%S'))
@@ -157,16 +161,15 @@ def train():
     model.summary()
 
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=10),
+        EarlyStopping(monitor='val_loss', patience=40),
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         # ModelCheckpoint(model_checkpoints_dirname + '/{epoch:02d}-{val_loss:.2f}.h5', verbose=1, save_best_only=True),
         # TensorBoard(log_dir=tensorboard_log_dirname),
+        LogBest(),
         WandbCallback(log_gradients=True, training_data=train_set),
-        LogBest()
     ]
 
     model.fit(train_set[0], train_set[1], batch_size=64, epochs=40, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
-
     evaluation(model, test_set)
 
 if __name__ == '__main__':

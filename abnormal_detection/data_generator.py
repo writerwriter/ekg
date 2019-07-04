@@ -6,12 +6,12 @@ from sklearn.model_selection import train_test_split
 import os, sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from ekg.utils.data_utils import patient_split
+from ekg.utils.data_utils import patient_split, DataAugmenter
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 
 class DataGenerator:
-    def __init__(self, remove_dirty=0):
+    def __init__(self, remove_dirty=0, ekg_scaling_prob=0.5, hs_scaling_prob=0.5, time_stretch_prob=0.):
         self.X, self.y = None, None
         if remove_dirty > 0:
             self.patient_X = np.load(os.path.join(DATA_DIR, 'cleaned_{:d}_patient_X.npy'.format(remove_dirty)))
@@ -22,6 +22,9 @@ class DataGenerator:
 
         self.normal_X = np.load(os.path.join(DATA_DIR, 'normal_X.npy')) # (?, 10, 10000)
         self.preprocessing()
+        self.augmenter = DataAugmenter(indices_channel_ekg=[0, 1, 2, 3, 4, 5, 6, 7], indices_channel_hs=[8, 9],
+                                        ekg_scaling_prob=ekg_scaling_prob, hs_scaling_prob=hs_scaling_prob,
+                                        time_stretch_prob=time_stretch_prob)
 
     def preprocessing(self):
         # combine normal and patient
@@ -30,7 +33,7 @@ class DataGenerator:
 
         # change dimension
         # ?, n_channels, n_points -> ?, n_points, n_channels
-        self.X = np.swapaxes(self.X, 1, 2)
+        self.X = np.swapaxes(self.X, 1, 2) # (?, 10000, 10)
 
         print('baseline:', self.y.sum() / self.y.shape[0])
         self.y = keras.utils.to_categorical(self.y, num_classes=2) # to one-hot
@@ -82,12 +85,12 @@ class DataGenerator:
 
         return [X_train, y_train], [X_valid, y_valid], [X_test, y_test]
 
-    @staticmethod
-    def augment(X, y):
+    def augment_batch(self, X, y):
+        for i, Xi in enumerate(X):
+            X[i] = self.augmenter.augment(Xi)
         return X, y
 
-    @staticmethod
-    def batch_generator(X, y, batch_size, shuffle=True, data_augmentation=True):
+    def batch_generator(self, X, y, batch_size, shuffle=True, data_augmentation=True):
         while True:
             if shuffle:
                 X, y = sklearn.utils.shuffle(X, y)
@@ -96,4 +99,7 @@ class DataGenerator:
                 index_start = int(index_batch * batch_size)
                 index_end = min(X.shape[0], index_start + batch_size)
                 m = np.s_[index_start: index_end]
-                yield X[m], y[m]
+                if data_augmentation:
+                    yield self.augment_batch(X[m], y[m])
+                else:
+                    yield X[m], y[m]

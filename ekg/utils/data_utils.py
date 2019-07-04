@@ -23,15 +23,53 @@ BIG_EXAM_NORMAL_DIRS = config['Paths']['big_exam_normal_dirs'].split(', ')
 NUM_PROCESSES = mp.cpu_count()*2
 
 class DataAugmenter:
-    def __init__(self, indices_channel_ekg, indices_channel_hs):
+    def __init__(self, indices_channel_ekg, indices_channel_hs,
+                    ekg_scaling_prob, hs_scaling_prob,
+                    time_stretch_prob):
+
         self.indices_channel_ekg = indices_channel_ekg
         self.indices_channel_hs = indices_channel_hs
+        self.total_nchannel = len(self.indices_channel_hs) + len(self.indices_channel_ekg)
 
+        self.ekg_scaling_prob = ekg_scaling_prob
+        self.hs_scaling_prob = hs_scaling_prob
+        self.time_stretch_prob = time_stretch_prob
+
+    # input shape: (10000, 10)
     def ekg_scaling(self, X, ratio):
-        X[self.indices_channel_ekg] *= ratio
+        X[..., self.indices_channel_ekg] *= ratio
 
     def hs_scaling(self, X, ratio):
-        X[self.indices_channel_hs] *= ratio
+        X[..., self.indices_channel_hs] *= ratio
+
+    def random_crop(self, X, length):
+        original_length = X.shape[-2]
+        random_offset = np.random.choice(np.arange(0, original_length-length+1, 1))
+        return X[random_offset: random_offset+length, :]
+
+    def time_stretch(self, X, ratio):
+        rtn = list()
+        original_length = X.shape[-2]
+        for i in range(X.shape[-1]): # through every channel
+            rtn.append(np.interp(np.linspace(0, original_length, ratio*original_length+1), np.arange(original_length), X[..., i]))
+
+        rtn = np.array(rtn).swapaxes(0, 1) # (10000, 10)
+        return self.random_crop(rtn, original_length)
+
+    def augment(self, X):
+        X  = X.copy().astype(np.float32)
+
+        if np.random.rand() <= self.ekg_scaling_prob:
+            self.ekg_scaling(X, np.random.uniform(0.95, 1.05))
+
+        if np.random.rand() <= self.hs_scaling_prob:
+            self.hs_scaling(X, np.random.uniform(0.95, 1.05))
+
+        if np.random.rand() <= self.time_stretch_prob:
+            X = self.time_stretch(X, np.random.uniform(1.0, 1.05))
+
+        return X
+
 
 def to_spectrogram(data):
     rtn = list()
