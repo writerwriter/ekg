@@ -28,7 +28,6 @@ from data_generator import DataGenerator
 from ekg.layers import LeftCropLike
 from ekg.layers.sincnet import SincConv1D
 from ekg.layers.non_local import non_local_block
-from ekg.utils.eval_utils import print_cm
 from eval import evaluation
 
 from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard, ReduceLROnPlateau
@@ -62,7 +61,7 @@ set_wandb_config({
 MODEL_DIR = os.path.join(os.path.dirname(__file__), '..', 'models')
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 
-def get_model():
+def get_model(): # TODO: add residual connection
     def heart_sound_branch(hs):
         sincconv_filter_length = wandb.config.sincconv_filter_length - (wandb.config.sincconv_filter_length+1) % 2
         hs = SincConv1D(wandb.config.sincconv_nfilters, sincconv_filter_length, 1000)(hs)
@@ -142,10 +141,7 @@ class LogBest(keras.callbacks.Callback):
             }, commit=False)
 
 def train():
-    g = DataGenerator(remove_dirty=wandb.config.remove_dirty,
-                        ekg_scaling_prob=wandb.config.ekg_scaling_prob,
-                        hs_scaling_prob=wandb.config.hs_scaling_prob,
-                        time_stretch_prob=wandb.config.time_stretch_prob)
+    g = DataGenerator(remove_dirty=wandb.config.remove_dirty)
     train_set, valid_set, test_set = g.get()
 
     model_checkpoints_dirname = os.path.join(MODEL_DIR, 'ad_checkpoints', datetime.now().strftime('%Y_%m%d_%H%M_%S'))

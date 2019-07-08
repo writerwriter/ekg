@@ -11,7 +11,7 @@ from ekg.utils.data_utils import patient_split, DataAugmenter
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 
 class DataGenerator:
-    def __init__(self, remove_dirty=0, ekg_scaling_prob=0.5, hs_scaling_prob=0.5, time_stretch_prob=0.):
+    def __init__(self, remove_dirty=0, ekg_scaling_prob=0., hs_scaling_prob=0., time_stretch_prob=0.):
         self.X, self.y = None, None
         if remove_dirty > 0:
             self.patient_X = np.load(os.path.join(DATA_DIR, 'cleaned_{:d}_patient_X.npy'.format(remove_dirty)))
