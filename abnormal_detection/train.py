@@ -11,7 +11,7 @@ from ekg.utils.train_utils import set_wandb_config
 # for loging result
 import wandb
 from wandb.keras import WandbCallback
-wandb.init(name='remove_dirty2_best_param_test', project='ekg-abnormal_detection', entity='toosyou')
+wandb.init(project='ekg-abnormal_detection', entity='toosyou') # name='remove_dirty2_best_param_test',
 
 from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
@@ -29,11 +29,11 @@ set_wandb_config({
 
     'branch_nlayers': 1,
 
-    'ekg_kernel_length': 21,
-    'hs_kernel_length': 5,
+    'ekg_kernel_length': 13,
+    'hs_kernel_length': 7,
 
-    'final_nlayers': 5,
-    'final_kernel_length': 13,
+    'final_nlayers': 6,
+    'final_kernel_length': 7,
     'final_nonlocal_nlayers': 0,
 
     'remove_dirty': 2,

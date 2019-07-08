@@ -27,11 +27,15 @@ def evaluation(models, test_set):
     print('Testing set baseline:', 1. - test_set[1][:, 0].sum() / test_set[1][:, 0].shape[0])
 
     y_pred_vote = np.zeros_like(test_set[1][:, 1])
-    for model in models:
-        y_pred = np.argmax(model.predict(test_set[0], batch_size=64), axis=1)
-        y_pred_vote = y_pred_vote + y_pred
+    try: # model ensemble
+        for model in models:
+            y_pred = np.argmax(model.predict(test_set[0], batch_size=64), axis=1)
+            y_pred_vote = y_pred_vote + y_pred
 
-    y_pred = (y_pred_vote > (len(models) / 2)).astype(int)
+        y_pred = (y_pred_vote > (len(models) / 2)).astype(int)
+    except:
+        y_pred = np.argmax(models.predict(test_set[0], batch_size=64), axis=1)
+
     y_true = test_set[1][:, 1]
 
     print('Total accuracy:', sklearn.metrics.accuracy_score(y_true, y_pred))

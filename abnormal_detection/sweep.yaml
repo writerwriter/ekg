@@ -33,4 +33,4 @@ parameters:
       values: [0, 1, 2, 3]
 
   remove_dirty:
-      values: [0, 1, 2]
+      values: [2]
