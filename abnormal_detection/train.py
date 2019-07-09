@@ -27,14 +27,16 @@ set_wandb_config({
     'sincconv_filter_length': 31,
     'sincconv_nfilters': 8,
 
-    'branch_nlayers': 1,
+    'branch_nlayers': 4,
 
-    'ekg_kernel_length': 13,
-    'hs_kernel_length': 7,
+    'ekg_kernel_length': 35,
+    'hs_kernel_length': 13,
 
-    'final_nlayers': 6,
+    'final_nlayers': 3,
     'final_kernel_length': 7,
     'final_nonlocal_nlayers': 0,
+
+    'skip_connection': False,
 
     'remove_dirty': 2,
 })
@@ -55,13 +57,14 @@ def train():
     model.summary()
 
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=40),
+        EarlyStopping(monitor='val_loss', patience=10),
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         LogBest(),
-        WandbCallback(log_gradients=True, training_data=train_set),
+        WandbCallback(log_gradients=False, training_data=train_set),
     ]
 
     model.fit(train_set[0], train_set[1], batch_size=64, epochs=40, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
+    model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
     evaluation(model, test_set)
 
 if __name__ == '__main__':
