@@ -32,6 +32,9 @@ parameters:
   final_nonlocal_nlayers:
       values: [0]
 
+  kernel_initializer:
+      values: ['glorot_uniform', 'he_normal']
+
   skip_connection:
       values: [True, False]
 

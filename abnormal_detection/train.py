@@ -36,13 +36,11 @@ set_wandb_config({
     'final_kernel_length': 7,
     'final_nonlocal_nlayers': 0,
 
+    'kernel_initializer': 'glorot_uniform',
     'skip_connection': False,
 
     'remove_dirty': 2,
 })
-
-MODEL_DIR = os.path.join(os.path.dirname(__file__), '..', 'models')
-DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 
 def train():
     g = DataGenerator(remove_dirty=wandb.config.remove_dirty)
