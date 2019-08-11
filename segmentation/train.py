@@ -1,192 +1,124 @@
-import numpy as np
-import keras
-import sklearn.metrics
-from keras.callbacks import EarlyStopping, ModelCheckpoint, TensorBoard
-from sklearn.model_selection import train_test_split
-from model import unet_1d
-from datetime import datetime
 import pickle
+import better_exceptions; better_exceptions.hook()
+
+import os, sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+
+from ekg.utils.train_utils import allow_gpu_growth; allow_gpu_growth()
+from ekg.utils.train_utils import set_wandb_config
+
+# for loging result
+import wandb
+from wandb.keras import WandbCallback
+wandb.init(project='ekg-segmentation', entity='toosyou')
+
+import numpy as np
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from keras.callbacks import Callback
 import os
 
-class DataGenerator:
-    def __init__(self):
-        self.patient_X = np.load('patient_X.npy') 
-        self.patient_y= np.load('patient_y.npy') 
-        self.X = np.swapaxes(self.patient_X, 1, 2)
-        self.y = np.swapaxes(self.patient_y, 1, 2)
+from ekg.callbacks import LogBest
+from model import unet_1d
+from data_generator import DataGenerator
 
-    @staticmethod
-    def normalize(X, means_and_stds=None):
-        if means_and_stds is None:
-            means = [ X[..., i].mean(dtype=np.float32) for i in range(X.shape[-1]) ]
-            stds = [ X[..., i].std(dtype=np.float32) for i in range(X.shape[-1]) ]
-        else:
-            means = means_and_stds[0]
-            stds = means_and_stds[1]
+import matplotlib
+matplotlib.use('agg')
+import matplotlib.pyplot as plt
 
-        normalized_X = np.zeros_like(X, dtype=np.float32)
-        for i in range(X.shape[-1]):
-            normalized_X[..., i] = X[..., i].astype(np.float32) - means[i]
-            normalized_X[..., i] = normalized_X[..., i] / stds[i]
-        return normalized_X, (means, stds)
+set_wandb_config({
+    'target': '24hr',
+    'seg_setting': 'pqrst',
 
-    @staticmethod
-    def split(X, y, rs=42):
-        # do normal split
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.3, random_state=42)
+    'amsgrad': True,
+    'n_middle_lstm': 3,
+    'ending_lstm': False,
+    # 'model_padding': 'valid',
 
-        # combine
+    # data
+    'sample_weight_moveing_average': True,
+    'window_moving_average': 6,
+})
+
+
+class PredictPlotter(Callback):
+    def __init__(self, plot_sample):
         '''
-        X_train = np.append(X_train, patient_training_set[0], axis=0)
-        y_train = np.append(y_train, patient_training_set[1], axis=0)
-
-        X_valid = np.append(X_valid, patient_valid_set[0], axis=0)
-        y_valid = np.append(y_valid, patient_valid_set[1], axis=0)
-
-        X_test = np.append(X_test, patient_test_set[0], axis=0)
-        y_test = np.append(y_test, patient_test_set[1], axis=0)
+            plot_sample: assumably normalized
         '''
-        return [X_train, y_train], [X_valid, y_valid], [X_test, y_test]
+        self.plot_sample = plot_sample
+        # fix the sample shape, which should be 3 (1, signal_length, n_channels)
+        if len(self.plot_sample.shape) == 2:
+            self.plot_sample = self.plot_sample[np.newaxis, ...]
+        super().__init__()
 
-    def X_shape(self):
-        return self.X.shape[1:]
+    def _generate_plot(self, pred):
+        def _to_array(fig):
+            fig.tight_layout(pad=0)
+            fig.canvas.draw()
+            img = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
+            img = img.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+            plt.close('all')
+            return img
 
-    def data(self):
-        return self.X, self.y
+        fig, axes = plt.subplots(ncols=1, nrows=6, sharex=True, figsize=(20, 10))
 
-class PatientDataGenerator:
-    def __init__(self):
-        self.patient_X = np.load('realpatient_X.npy') 
-        self.patient_y= np.load('realpatient_y.npy') 
-        self.X = np.swapaxes(self.patient_X, 1, 2)
-        self.y = np.swapaxes(self.patient_y, 1, 2)
+        for i, ax in enumerate(axes):
+            ax.set_title('pqrst-'[i])
+            ax.plot(pred[0, :, i], color='C0')
 
-    @staticmethod
-    def normalize(X, means_and_stds=None):
-        if means_and_stds is None:
-            means = [ X[..., i].mean(dtype=np.float32) for i in range(X.shape[-1]) ]
-            stds = [ X[..., i].std(dtype=np.float32) for i in range(X.shape[-1]) ]
-        else:
-            means = means_and_stds[0]
-            stds = means_and_stds[1]
+            ax = ax.twinx()
+            ax.plot(self.plot_sample[0, :, 0], color='C1')
 
-        normalized_X = np.zeros_like(X, dtype=np.float32)
-        for i in range(X.shape[-1]):
-            normalized_X[..., i] = X[..., i].astype(np.float32) - means[i]
-            normalized_X[..., i] = normalized_X[..., i] / stds[i]
-        return normalized_X, (means, stds)
+        plt.margins(x=0.01, y=0.01)
+        return _to_array(fig)
 
-    @staticmethod
-    def split(X, y, rs=42):
-        # do normal split
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=42)
-        X_train, X_valid, y_train, y_valid = train_test_split(X_train, y_train, test_size=0.3, random_state=42)
+    def on_epoch_end(self, epoch, logs=None):
+        if epoch % 10 == 0:
+            pred = self.model.predict(self.plot_sample)
+            img = self._generate_plot(pred)
+            wandb.log({'predict': wandb.Image(img)}, commit=False)
 
-        # combine
-        '''
-        X_train = np.append(X_train, patient_training_set[0], axis=0)
-        y_train = np.append(y_train, patient_training_set[1], axis=0)
+def moving_average(a, n=3) :
+    ret = np.cumsum(a, dtype=float)
+    ret[n:] = ret[n:] - ret[:-n]
+    return ret[n - 1:]
 
-        X_valid = np.append(X_valid, patient_valid_set[0], axis=0)
-        y_valid = np.append(y_valid, patient_valid_set[1], axis=0)
-
-        X_test = np.append(X_test, patient_test_set[0], axis=0)
-        y_test = np.append(y_test, patient_test_set[1], axis=0)
-        '''
-        return [X_train, y_train], [X_valid, y_valid], [X_test, y_test]
-
-    def X_shape(self):
-        return self.X.shape[1:]
-
-    def data(self):
-        return self.X, self.y
-
-def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=None):
-    """pretty print for confusion matrixes"""
-    columnwidth = max([len(x) for x in labels] + [5])  # 5 is value length
-    empty_cell = " " * columnwidth
-
-    # Begin CHANGES
-    fst_empty_cell = (columnwidth-3)//2 * " " + "t/p" + (columnwidth-3)//2 * " "
-
-    if len(fst_empty_cell) < len(empty_cell):
-        fst_empty_cell = " " * (len(empty_cell) - len(fst_empty_cell)) + fst_empty_cell
-    # Print header
-    print("    " + fst_empty_cell, end=" ")
-    # End CHANGES
-
-    for label in labels:
-        print("%{0}s".format(columnwidth) % label, end=" ")
-
-    print()
-    # Print rows
-    for i, label1 in enumerate(labels):
-        print("    %{0}s".format(columnwidth) % label1, end=" ")
-        for j in range(len(labels)):
-            cell = "%{0}.1f".format(columnwidth) % cm[i, j]
-            if hide_zeroes:
-                cell = cell if float(cm[i, j]) != 0 else empty_cell
-            if hide_diagonal:
-                cell = cell if i != j else empty_cell
-            if hide_threshold:
-                cell = cell if cm[i, j] > hide_threshold else empty_cell
-            print(cell, end=" ")
-        print()
-
+def get_weight(y, do_moving_average=False, window_size=10):
+    weight_matrix = np.max(np.swapaxes(y, 1, 2)[:, :5, :], axis=1)*1000 + 1.       # background weight 1 , else 1001
+    if do_moving_average:
+        for i in range(weight_matrix.shape[0]):
+            weight_matrix[i] = np.pad(moving_average(weight_matrix[i], n=window_size),
+                                        (window_size//2, window_size//2-1), mode='constant', constant_values=1)
+    return weight_matrix
 
 def train():
-    g = DataGenerator()
-    X, y = g.data()
-    train_set, valid_set, test_set = g.split(X, y)
-    weight_matrix = np.zeros((np.shape(train_set[0])[0], np.shape(train_set[0])[1]))  # should be num_data * ecg_size
-    weight_matrix[:, :] = np.max(np.swapaxes(train_set[1], 1, 2)[:, :5, :], axis=1)*1000 + 1.      # background weight 1 , else 1001
-    """
-    for x in range(np.shape(weight_matrix)[0]):
-        for y in range(np.shape(weight_matrix[x])[0]):
-            if weight_matrix[x][y]==1001:
-                weight_matrix[x, y-10:y+10] = 0
-    #print(np.where(weight_matrix==0))
-    """
+    g = DataGenerator(wandb.config)
+    train_set, valid_set, test_set = g.get()
 
+    # save means and stds to wandb
+    with open(os.path.join(wandb.run.dir, 'means_and_stds.pl'), 'wb') as f:
+        pickle.dump(g.means_and_stds, f)
 
-    model_checkpoints_dirname = 'model_checkpoints/'+datetime.now().strftime('%Y%m%d%H%M%S')
-    tensorboard_log_dirname = model_checkpoints_dirname + '/logs'
-    os.makedirs(model_checkpoints_dirname)
-    os.makedirs(tensorboard_log_dirname)
+    training_weight = get_weight(train_set[1],
+                                wandb.config.sample_weight_moveing_average,
+                                wandb.config.window_moving_average)
+    validation_weight = get_weight(valid_set[1],
+                                wandb.config.sample_weight_moveing_average,
+                                wandb.config.window_moving_average)
 
-    # do normalize using means and stds from training data
-    train_set[0], means_and_stds = DataGenerator.normalize(train_set[0])
-    valid_set[0], _ = DataGenerator.normalize(valid_set[0], means_and_stds)
-    test_set[0], _ = DataGenerator.normalize(test_set[0], means_and_stds)
-
-    # save means and stds
-    with open(model_checkpoints_dirname + '/means_and_stds.txt', 'wb') as f:
-        pickle.dump(means_and_stds, f)
-
-    model = unet_1d()
+    model = unet_1d(wandb.config)
     model.summary()
 
     callbacks = [
-        # EarlyStopping(patience=5),
-        ModelCheckpoint(model_checkpoints_dirname + '/{epoch:02d}-{val_loss:.2f}.h5', verbose=1, period=100),
-        TensorBoard(log_dir=tensorboard_log_dirname)
+        EarlyStopping(monitor='val_loss', patience=50),
+        # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
+        LogBest(),
+        PredictPlotter(plot_sample=valid_set[0][0]),
+        WandbCallback(log_gradients=False, training_data=train_set),
     ]
 
-    print(1. - valid_set[1][:, 0].sum() / valid_set[1][:, 0].shape[0])
-    print(1. - train_set[1][:, 0].sum() / train_set[1][:, 0].shape[0])
-
-    #sample_weight = np.zeros((44, 10000))
-    #sample_weight[..., :5] = 1
-    #sample_weight[..., 5] = 1
-
-    model.fit(train_set[0], train_set[1], batch_size=64, epochs=2000, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True, sample_weight=weight_matrix)
-    """
-    y_pred = np.argmax(model.predict(test_set[0], batch_size=64), axis=1)
-    y_true = test_set[1][:, 1]
-    print(sklearn.metrics.classification_report(y_true, y_pred))
-    """
-    #print_cm(sklearn.metrics.confusion_matrix(y_true, y_pred), ['normal', 'patient'])
+    model.fit(train_set[0], train_set[1], batch_size=64, epochs=2000, validation_data=(valid_set[0], valid_set[1], validation_weight), callbacks=callbacks, shuffle=True, sample_weight=training_weight)
+    model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
 
 if __name__ == '__main__':
     train()
