@@ -38,6 +38,7 @@ set_wandb_config({
 
     'kernel_initializer': 'glorot_uniform',
     'skip_connection': False,
+    'crop_center': True,
 
     'remove_dirty': 2,
 })

@@ -37,6 +37,8 @@ parameters:
 
   skip_connection:
       values: [True, False]
+  crop_center:
+      values: [True, False]
 
   remove_dirty:
       values: [2]

@@ -4,7 +4,7 @@ from keras.layers import Input, Lambda, BatchNormalization, GlobalAveragePooling
 from keras.layers import Conv1D, MaxPooling1D, Dense, Add, Concatenate
 # from keras.layers import Maximum
 
-from ..layers import LeftCropLike
+from ..layers import LeftCropLike, CenterCropLike
 from ..layers.sincnet import SincConv1D
 from ..layers.non_local import non_local_block
 
@@ -65,7 +65,10 @@ def backbone(config, include_top=False, classification=True, classes=2):
                                                 config.skip_connection, name_prefix='hs_branch_1_'))
 
     hs = Add(name='hs_merge')(hs_outputs)
-    ekg = LeftCropLike(name='ekg_crop')([ekg, hs])
+    if config.crop_center:
+        ekg = CenterCropLike(name='ekg_crop')([ekg, hs])
+    else:
+        ekg = LeftCropLike(name='ekg_crop')([ekg, hs])
     output = Concatenate(axis=-1, name='hs_ekg_merge')([hs, ekg])
 
     if include_top: # final layers
