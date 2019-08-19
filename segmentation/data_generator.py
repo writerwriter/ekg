@@ -1,16 +1,18 @@
 import numpy as np
 from sklearn.model_selection import train_test_split
+from scipy.ndimage.filters import gaussian_filter
 
 import os
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 
 class DataGenerator:
-    def __init__(self, config):
+    def __init__(self, config, model_output_shape=None):
         self.patient_X = np.load(os.path.join(DATA_DIR, 'seg_X.npy')) # (90, 8, 10000)
         self.patient_y= np.load(os.path.join(DATA_DIR, 'seg_y.npy')) # (90, 6, 10000)
 
         self.means_and_stds = None
         self.config = config
+        self.model_output_shape = model_output_shape
 
         self.X, self.y = None, None
         self.preprocessing()
@@ -23,8 +25,30 @@ class DataGenerator:
             # downsample the signals to 500hz, while the original ones are 1000Hz
             self.X = self.X[:, ::2, 0:1] # and only use the first lead signals
             self.y = self.y[:, ::2, :] + self.y[:, 1::2, :]
+
+            if self.config.model_padding == 'valid':
+                diff = 5000 - self.model_output_shape[1]
+                self.y = self.y[:, diff//2: (diff//2 + self.model_output_shape[1]) ,:]
+
         else: # bigexam
             pass
+
+        if self.config.regression:
+            # remove the last channel of y
+            self.y = self.y[:, :, :-1]
+
+            # apply gaussian filter to label
+            ksize = self.config.label_blur_kernel
+            sigma = 0.3*((ksize-1)*0.5 - 1) + 0.8
+            for index_sample in range(self.y.shape[0]):
+                for index_channel in range(self.y.shape[2]):
+                    self.y[index_sample, :, index_channel] = gaussian_filter(self.y[index_sample, :, index_channel], sigma=sigma)
+
+            # normalization
+            if self.config.label_normalization:
+                for index_sample in range(self.y.shape[0]):
+                    for index_channel in range(self.y.shape[2]):
+                        self.y[index_sample, :, index_channel] /= self.y[index_sample, :, index_channel].max() / self.config.label_normalization_value
 
         if self.config.seg_setting == 'split':
             print('ERROR: seg_setting {} not supported!'.format(self.config.seg_setting))

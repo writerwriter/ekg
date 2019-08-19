@@ -18,7 +18,7 @@ from keras.callbacks import Callback
 import os
 
 from ekg.callbacks import LogBest
-from model import unet_1d
+from model import unet_lstm
 from data_generator import DataGenerator
 
 import matplotlib
@@ -30,25 +30,46 @@ set_wandb_config({
     'seg_setting': 'pqrst',
 
     'amsgrad': True,
-    'n_middle_lstm': 3,
+    'n_encoding_layers': 7,
+    'n_middle_lstm': 3, # TODO: fix lstm position
+    'n_final_conv': 5,
+    'base_feature_number': 8,
+    'max_feature_number': 64,
     'ending_lstm': False,
-    # 'model_padding': 'valid',
+    'model_padding': 'valid', # TODO: same
+    'bidirectional': True,
+    'batch_normalization': False,
 
     # data
-    'sample_weight_moveing_average': True,
-    'window_moving_average': 6,
+    'peak_weight': 0,
+    'window_moving_average': 0,
+    'window_weight_forgiveness': 0,
+
+    'regression': True,
+    'label_blur_kernel': 11,
+    'label_normalization': True,
+    'label_normalization_value': 512, # TODO: calculate it by peak and background ratio
 })
 
-
 class PredictPlotter(Callback):
-    def __init__(self, plot_sample):
+    def __init__(self, plot_sample, y_weight=(None,None), config=wandb.config, model_output_shape=[None, 5000, 6], freq=50):
         '''
             plot_sample: assumably normalized
+            y_weight: (y, weight)
+                        y: [signal_length, number_channels]
+                        weight: [signal_length]
+
         '''
         self.plot_sample = plot_sample
+        self.config = config
+        self.model_output_shape = model_output_shape
+        self.freq = freq
+        self.y = y_weight[0]
+        self.weight = y_weight[1]
         # fix the sample shape, which should be 3 (1, signal_length, n_channels)
         if len(self.plot_sample.shape) == 2:
             self.plot_sample = self.plot_sample[np.newaxis, ...]
+
         super().__init__()
 
     def _generate_plot(self, pred):
@@ -60,39 +81,75 @@ class PredictPlotter(Callback):
             plt.close('all')
             return img
 
-        fig, axes = plt.subplots(ncols=1, nrows=6, sharex=True, figsize=(20, 10))
+        if self.config.model_padding == 'valid':
+            diff = 5000 - self.model_output_shape[1]
+            original_signal = self.plot_sample[0, diff//2: (diff//2 + self.model_output_shape[1]) ,0]
+        else:
+            original_signal = self.plot_sample[0, :, 0]
 
+        number_plot_channel = pred.shape[2] + 1 if self.y is not None else pred.shape[2]
+        fig, axes = plt.subplots(ncols=1, nrows=number_plot_channel, sharex=True, figsize=(20, 10))
         for i, ax in enumerate(axes):
-            ax.set_title('pqrst-'[i])
-            ax.plot(pred[0, :, i], color='C0')
+            if i == len(axes) - 1: # the last channel is for ground truth
+                ax.set_title('ground truth')
+                for index_channel in range(self.y.shape[1]):
+                    ax.plot(self.y[:, index_channel], color='C0')
+                ax.plot(-self.weight / self.weight.max() * self.y.max(), color='C2')
 
-            ax = ax.twinx()
-            ax.plot(self.plot_sample[0, :, 0], color='C1')
+                ax = ax.twinx()
+                ax.plot(original_signal, color='C1')
+            else:
+                ax.set_title('pqrst-'[i])
+                ax.plot(pred[0, :, i], color='C0')
+
+                ax = ax.twinx()
+                ax.plot(original_signal, color='C1')
 
         plt.margins(x=0.01, y=0.01)
         return _to_array(fig)
 
     def on_epoch_end(self, epoch, logs=None):
-        if epoch % 10 == 0:
+        if epoch % self.freq == 0:
             pred = self.model.predict(self.plot_sample)
             img = self._generate_plot(pred)
             wandb.log({'predict': wandb.Image(img)}, commit=False)
 
-def moving_average(a, n=3) :
-    ret = np.cumsum(a, dtype=float)
-    ret[n:] = ret[n:] - ret[:-n]
-    return ret[n - 1:]
+def get_weight(y, peak_weight = 1000, window_moving_average=10, window_forgiveness=0):
+    '''
+        y.shape == [?, signal_length, n_channels]
+    '''
+    def moving_average(a, n=3) :
+        ret = np.cumsum(a, dtype=float)
+        ret[n:] = ret[n:] - ret[:-n]
+        return ret[n - 1:]
 
-def get_weight(y, do_moving_average=False, window_size=10):
-    weight_matrix = np.max(np.swapaxes(y, 1, 2)[:, :5, :], axis=1)*1000 + 1.       # background weight 1 , else 1001
-    if do_moving_average:
+    # TODO figure it out
+    # peak_matrix = np.zeros(y.shape[:2], dtype=bool) # (?, signal_length), all False
+    # for i in range(y.shape[-1]):
+    #     peak_matrix = np.logical_or(peak_matrix, y[:, :, i] > 1e-8)
+    # peak_matrix = peak_matrix.astype(float)
+
+    peak_matrix = y[:, :, :5].max(axis=2) # (?, signal_length)
+
+    weight_matrix = peak_matrix * peak_weight + 1.         # background weight 1 , else 1001, # (?, signal_length)
+    if window_moving_average > 0:
         for i in range(weight_matrix.shape[0]):
-            weight_matrix[i] = np.pad(moving_average(weight_matrix[i], n=window_size),
-                                        (window_size//2, window_size//2-1), mode='constant', constant_values=1)
+            weight_matrix[i] = np.pad(moving_average(weight_matrix[i], n=window_moving_average),
+                                        (window_moving_average//2, window_moving_average//2), mode='constant', constant_values=1)
+
+    if window_forgiveness > 0:
+        for i in range(weight_matrix.shape[0]):
+            forgiveness_matrix = np.pad(moving_average(peak_matrix[i], n=window_forgiveness),
+                                        (window_forgiveness//2, window_forgiveness//2), mode='constant', constant_values=0) - peak_matrix[i]
+            weight_matrix[i, forgiveness_matrix==1] = 0
+
     return weight_matrix
 
 def train():
-    g = DataGenerator(wandb.config)
+    model, model_output_shape = unet_lstm(wandb.config)
+    model.summary()
+
+    g = DataGenerator(wandb.config, model_output_shape)
     train_set, valid_set, test_set = g.get()
 
     # save means and stds to wandb
@@ -100,24 +157,25 @@ def train():
         pickle.dump(g.means_and_stds, f)
 
     training_weight = get_weight(train_set[1],
-                                wandb.config.sample_weight_moveing_average,
-                                wandb.config.window_moving_average)
+                                wandb.config.peak_weight,
+                                wandb.config.window_moving_average,
+                                wandb.config.window_weight_forgiveness)
     validation_weight = get_weight(valid_set[1],
-                                wandb.config.sample_weight_moveing_average,
-                                wandb.config.window_moving_average)
-
-    model = unet_1d(wandb.config)
-    model.summary()
+                                wandb.config.peak_weight,
+                                wandb.config.window_moving_average,
+                                wandb.config.window_weight_forgiveness)
 
     callbacks = [
         EarlyStopping(monitor='val_loss', patience=50),
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         LogBest(),
-        PredictPlotter(plot_sample=valid_set[0][0]),
+        PredictPlotter(plot_sample=valid_set[0][0], y_weight=(valid_set[1][0], validation_weight[0]), config=wandb.config, model_output_shape=model_output_shape, freq=50),
         WandbCallback(log_gradients=False, training_data=train_set),
     ]
 
-    model.fit(train_set[0], train_set[1], batch_size=64, epochs=2000, validation_data=(valid_set[0], valid_set[1], validation_weight), callbacks=callbacks, shuffle=True, sample_weight=training_weight)
+    model.fit(train_set[0], train_set[1], batch_size=64,
+                    epochs=6000, validation_data=(valid_set[0], valid_set[1], validation_weight),
+                    callbacks=callbacks, shuffle=True, sample_weight=training_weight)
     model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
 
 if __name__ == '__main__':
