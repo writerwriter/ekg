@@ -30,13 +30,17 @@ set_wandb_config({
     'seg_setting': 'pqrst',
 
     'amsgrad': True,
-    'n_encoding_layers': 7,
-    'n_middle_lstm': 3, # TODO: fix lstm position
-    'n_final_conv': 5,
+    'n_encoding_layers': 8,
+    'n_initial_layers': 2,
+    'n_conv_per_encoding_layer': 3,
+    'kernel_size_encoding': 7,
+    'index_middle_lstm': 5,
+    'n_middle_lstm': 3,
+    'n_final_conv': 6,
     'base_feature_number': 8,
-    'max_feature_number': 64,
+    'max_feature_number': 32,
     'ending_lstm': False,
-    'model_padding': 'valid', # TODO: same
+    'model_padding': 'same',
     'bidirectional': True,
     'batch_normalization': False,
 
@@ -123,12 +127,6 @@ def get_weight(y, peak_weight = 1000, window_moving_average=10, window_forgivene
         ret[n:] = ret[n:] - ret[:-n]
         return ret[n - 1:]
 
-    # TODO figure it out
-    # peak_matrix = np.zeros(y.shape[:2], dtype=bool) # (?, signal_length), all False
-    # for i in range(y.shape[-1]):
-    #     peak_matrix = np.logical_or(peak_matrix, y[:, :, i] > 1e-8)
-    # peak_matrix = peak_matrix.astype(float)
-
     peak_matrix = y[:, :, :5].max(axis=2) # (?, signal_length)
 
     weight_matrix = peak_matrix * peak_weight + 1.         # background weight 1 , else 1001, # (?, signal_length)
@@ -148,6 +146,7 @@ def get_weight(y, peak_weight = 1000, window_moving_average=10, window_forgivene
 def train():
     model, model_output_shape = unet_lstm(wandb.config)
     model.summary()
+    wandb.log({'model_ouptut_length': model_output_shape[1]}, commit=False)
 
     g = DataGenerator(wandb.config, model_output_shape)
     train_set, valid_set, test_set = g.get()
@@ -166,7 +165,7 @@ def train():
                                 wandb.config.window_weight_forgiveness)
 
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=50),
+        EarlyStopping(monitor='val_loss', patience=200),
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         LogBest(),
         PredictPlotter(plot_sample=valid_set[0][0], y_weight=(valid_set[1][0], validation_weight[0]), config=wandb.config, model_output_shape=model_output_shape, freq=50),
