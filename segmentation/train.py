@@ -25,20 +25,25 @@ import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
+# import configs
+# set_wandb_config(configs.original_unet)
+
 set_wandb_config({
     'target': '24hr',
     'seg_setting': 'pqrst',
 
     'amsgrad': True,
+    'radam': True,
     'n_encoding_layers': 8,
     'n_initial_layers': 2,
     'n_conv_per_encoding_layer': 3,
     'kernel_size_encoding': 7,
     'index_middle_lstm': 5,
     'n_middle_lstm': 3,
+    'n_middle_lstm_units': 8,
     'n_final_conv': 6,
     'base_feature_number': 8,
-    'max_feature_number': 32,
+    'max_feature_number': 128,
     'ending_lstm': False,
     'model_padding': 'same',
     'bidirectional': True,
@@ -53,7 +58,10 @@ set_wandb_config({
     'label_blur_kernel': 11,
     'label_normalization': True,
     'label_normalization_value': 512, # TODO: calculate it by peak and background ratio
+    'use_all_leads': True,
 })
+
+
 
 class PredictPlotter(Callback):
     def __init__(self, plot_sample, y_weight=(None,None), config=wandb.config, model_output_shape=[None, 5000, 6], freq=50):
@@ -147,6 +155,7 @@ def train():
     model, model_output_shape = unet_lstm(wandb.config)
     model.summary()
     wandb.log({'model_ouptut_length': model_output_shape[1]}, commit=False)
+    wandb.log({'model_params': model.count_params()}, commit=False)
 
     g = DataGenerator(wandb.config, model_output_shape)
     train_set, valid_set, test_set = g.get()
@@ -165,10 +174,12 @@ def train():
                                 wandb.config.window_weight_forgiveness)
 
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=200),
+        EarlyStopping(monitor='val_loss', patience=50),
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         LogBest(),
-        PredictPlotter(plot_sample=valid_set[0][0], y_weight=(valid_set[1][0], validation_weight[0]), config=wandb.config, model_output_shape=model_output_shape, freq=50),
+        PredictPlotter(plot_sample=valid_set[0][0], 
+                        y_weight=(valid_set[1][0], validation_weight[0]), 
+                        config=wandb.config, model_output_shape=model_output_shape, freq=20),
         WandbCallback(log_gradients=False, training_data=train_set),
     ]
 

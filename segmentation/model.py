@@ -1,6 +1,7 @@
 from keras.layers import Input, Conv1D, MaxPooling1D, LSTM, concatenate, UpSampling1D, Softmax, ZeroPadding1D, Bidirectional, BatchNormalization
 from keras.models import Model
 from keras.optimizers import Adam
+from keras_radam import RAdam
 
 import os, sys
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
@@ -26,6 +27,7 @@ def unet_lstm(config):
 
 
     # encoding
+    middle_lstm_constructed = False
     encoding_layers = list()
     for i in range(config.n_encoding_layers): # 5
         number_feature = min(base_feature_number*(2**i), config.max_feature_number)
@@ -42,15 +44,20 @@ def unet_lstm(config):
         # middle lstms
         if i == config.index_middle_lstm:
             for _ in range(config.n_middle_lstm):
-                lstm_layer = Bidirectional(LSTM(units=32, return_sequences=True)) if config.bidirectional else LSTM(units=32, return_sequences=True)
+                lstm_layer = Bidirectional(LSTM(units=config.n_middle_lstm_units, return_sequences=True)) \
+                                if config.bidirectional else LSTM(units=config.n_middle_lstm_units, return_sequences=True)
                 net = lstm_layer(net)
-
-
+                middle_lstm_constructed = True
 
         if i != config.n_encoding_layers - 1:
             net = MaxPooling1D(pool_size=2, name='encoding_maxpool_{}'.format(i))(net)
 
-
+    if not middle_lstm_constructed:
+        for _ in range(config.n_middle_lstm):
+            lstm_layer = Bidirectional(LSTM(units=config.n_middle_lstm_units, return_sequences=True)) \
+                            if config.bidirectional else LSTM(units=config.n_middle_lstm_units, return_sequences=True)
+            net = lstm_layer(net)
+            middle_lstm_constructed = True
 
     # decoding
     for i in range(config.n_encoding_layers-1): # the number of layers would be n_encoding_layers - 1 for now. # 4
@@ -79,17 +86,17 @@ def unet_lstm(config):
                         name='final_conv_{}'.format(i))(net)
         net = BatchNormalization(name='final_bn_{}'.format(i))(net) if config.batch_normalization else net
 
-
     if config.seg_setting == 'split':
         output_shape = 2
     else: # pqrst
         output_shape = 5 if config.regression else 6
 
-    if config.ending_lstm:
+    if config.ending_lstm: # NOTE: this is currently not working
         net = LSTM(units = 8, return_sequences = True)(net)
         net = LSTM(units = 8, return_sequences = True)(net)
-        net = LSTM(units = output_shape, return_sequences = True)(net) # spliting cardiac cycle or predict qprst
-        net = Softmax()(net)
+        net = LSTM(units = output_shape, return_sequences = True, activation='linear' if config.regression else 'tanh')(net) # spliting cardiac cycle or predict qprst
+        if not config.regression: # classification
+            net = Softmax()(net)
         output = net
     else:
         output = Conv1D(output_shape, 7,
@@ -99,7 +106,9 @@ def unet_lstm(config):
                         name='output_conv')(net)
 
     model = Model(inputs = input, outputs = output)
-    model.compile(optimizer = Adam(lr=1e-4, amsgrad=config.amsgrad),
+
+    optimizer = RAdam() if config.radam else Adam(lr=1e-4, amsgrad=config.amsgrad)
+    model.compile(optimizer = optimizer,
                                     loss = 'mean_squared_error' if config.regression else 'categorical_crossentropy',
                                     metrics = ['accuracy'], sample_weight_mode="temporal")
     return model, model.layers[-1].output_shape

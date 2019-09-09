@@ -23,7 +23,11 @@ class DataGenerator:
 
         if self.config.target == '24hr':
             # downsample the signals to 500hz, while the original ones are 1000Hz
-            self.X = self.X[:, ::2, 0:1] # and only use the first lead signals
+            self.X = self.X[:, ::2]
+
+            if not self.config.use_all_leads:
+                self.X = self.X[:, :, 0:1] # and only use the first lead signals
+
             self.y = self.y[:, ::2, :] + self.y[:, 1::2, :]
 
             if self.config.model_padding == 'valid':
@@ -69,7 +73,26 @@ class DataGenerator:
         return normalized_X, (means, stds)
 
     def get(self):
+        def __signal_flatten(dataset):
+            X, y = dataset
+
+            # X: (?, signal_length, 8) -> (?, 8, signal_length) -> (? * 8, signal_length, 1)
+            X = np.moveaxis(X, -1, 1)
+            X = np.reshape(X, (-1, X.shape[-1]))
+            X = X[..., np.newaxis]
+
+            # y: (?, signal_length, 5 or 6) -> (? * 8, signal_length, 5 or 6)
+            y = np.repeat(y, 8, axis=0)
+
+            return [X, y]
+
         train_set, valid_set, test_set = self.split()
+
+        if self.config.target == '24hr' and self.config.use_all_leads: # flatten all leads
+            # (?, signal_length, 8) -> (? * 8, signal_length, 1)
+            train_set = __signal_flatten(train_set)
+            valid_set = __signal_flatten(valid_set)
+            test_set = __signal_flatten(test_set)
 
         # do normalize using means and stds from training data
         train_set[0], self.means_and_stds = DataGenerator.normalize(train_set[0])
