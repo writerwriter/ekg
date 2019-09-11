@@ -7,6 +7,7 @@ from sklearn.model_selection import train_test_split
 import better_exceptions; better_exceptions.hook()
 import os
 import configparser
+from functools import partial
 
 from ..audicor_reader import reader
 
@@ -14,7 +15,7 @@ config = configparser.ConfigParser()
 config.read(os.path.join(os.path.dirname(__file__), '..', 'configs.ini'))
 OUTCOME_FILENAME = config['Paths']['outcome']
 LVEF_PATH_FILENAME = config['Paths']['lvef_path']
-LVEF_PATH_DUR_FILENAME = config['Paths']['lvef_path_dur']
+PATH_DUR_FILENAME = config['Paths']['path_dur']
 DIRTYDATA_INDICES_FILENAME = config['Paths']['dirtydata_indices']
 
 BIG_EXAM_DIR = config['Paths']['big_exam_dir']
@@ -70,7 +71,6 @@ class DataAugmenter:
 
         return X
 
-
 def to_spectrogram(data):
     rtn = list()
 
@@ -104,6 +104,14 @@ def load_normal_data(do_bandpass_filter=True, filter_lowcut=30, filter_highcut=1
         filenames = filenames + get_normal_filenames(dirname)
     return mp_get_ekg(filenames, do_bandpass_filter, filter_lowcut, filter_highcut, 'Loading normal data')
 
+def path_is_dirty(pi, dirtydata_indices_df, remove_dirty):
+    for dp in dirtydata_indices_df['dirty']:
+        if dp == dp and dp in pi: return True
+    if remove_dirty == 2: # not-so-dirty data
+        for dp in dirtydata_indices_df['gray_zone']:
+            if dp == dp and dp in pi: return True
+    return False
+
 def load_patient_data(do_bandpass_filter=True, filter_lowcut=30, filter_highcut=100, remove_dirty=0):
     '''
         remove_dirty:
@@ -111,20 +119,12 @@ def load_patient_data(do_bandpass_filter=True, filter_lowcut=30, filter_highcut=
             1 - remove dirty data
             2 - remove dirty data and not-so-dirty data
     '''
-    def is_dirty(pi, dirtydata_indices_df):
-        for dp in dirtydata_indices_df['dirty']:
-            if dp == dp and dp in pi: return True
-        if remove_dirty == 2: # not-so-dirty data
-            for dp in dirtydata_indices_df['gray_zone']:
-                if dp == dp and dp in pi: return True
-        return False
-
     path_lvef_df = pd.read_csv(LVEF_PATH_FILENAME, header=None, names=['path', 'LVEF'])
     paths = path_lvef_df['path'].values
     # clean up
     if remove_dirty > 0:
         dirtydata_indices_df = pd.read_excel(DIRTYDATA_INDICES_FILENAME)
-        paths = np.array([p for p in paths if not is_dirty(p, dirtydata_indices_df)])
+        paths = np.array([p for p in paths if not path_is_dirty(p, dirtydata_indices_df, remove_dirty)])
 
     filenames = list(map(lambda x: BIG_EXAM_DIR+x, paths))
     patient_id = np.array([p.split('/')[1] for p in paths])
@@ -171,33 +171,41 @@ def patient_split(X, y, patient_id, rs=42):
 
     return [[X_train, y_train], [X_valid, y_valid], [X_test, y_test]]
 
-def load_survival_data():
-    dur_df = pd.read_csv(LVEF_PATH_DUR_FILENAME)
+def load_survival_data(event_name, remove_dirty=0):
+    '''
+        remove_dirty:
+            0 - don't remove dirty data
+            1 - remove dirty data
+            2 - remove dirty data and not-so-dirty data
+    '''
+    dur_df = pd.read_csv(PATH_DUR_FILENAME)
 
-    # 1: event occurred, 0: survived, -1: pass event, ignore
-    censoring_stats = np.ones(dur_df.path.shape) * -1
-    survival_times = np.zeros(dur_df.path.shape)
+    if remove_dirty > 0:
+        dirtydata_indices_df = pd.read_excel(DIRTYDATA_INDICES_FILENAME)
+        filter_function = lambda row: not path_is_dirty(row['path'], dirtydata_indices_df, remove_dirty)
+        dur_df = dur_df[dur_df.apply(filter_function, axis=1)].reset_index(drop=True)
 
     # dur_df.follow_dur[i] < 0: this measurement is done after the final follow date
     # dur_df.ADHF_dur[i] != dur_df.ADHF_dur[i]: no ADHF occurred, survived
     # dur_df.ADHF_dur[i] < 0: this measurement is done after event
 
-    for i in range(censoring_stats.shape[0]):
-        if dur_df.follow_dur[i] < 0 or\
-            dur_df.ADHF_dur[i] < 0 or\
-            'NG' in dur_df.path[i]: # the measurement is not trust-worthy
-            censoring_stats[i] = -1
+    event_dur_name = event_name + '_dur'
 
-        elif dur_df.ADHF_dur[i] != dur_df.ADHF_dur[i]: # Nan
-            censoring_stats[i] = 0 # survived
-            survival_times[i] = dur_df.follow_dur[i]
+    # 1: event occurred, 0: survived, -1: pass event, ignore
+    dur_df['censoring_stats'] = 1 # event occurred
+    dur_df['censoring_stats'][dur_df[event_dur_name] != dur_df[event_dur_name]] = 0 # Nan
+    dur_df['censoring_stats'][ (dur_df.follow_dur < 0) | (dur_df[event_dur_name] < 0) | (dur_df.path.str.contains('NG'))] = -1
 
-        else: # event occurred
-            censoring_stats[i] = 1
-            survival_times[i] = dur_df.ADHF_dur[i]
+    dur_df['survival_times'] = dur_df[event_dur_name] # event occurred
+    dur_df['survival_times'][dur_df[event_dur_name] != dur_df[event_dur_name]] = dur_df.follow_dur[dur_df[event_dur_name] != dur_df[event_dur_name]] # Nan
+    dur_df['survival_times'][ (dur_df.follow_dur < 0) | (dur_df[event_dur_name] < 0) | (dur_df.path.str.contains('NG'))] = 0
+
+    censoring_stats = dur_df['censoring_stats'].values
+    survival_times = dur_df['survival_times'].values.astype(int)
 
     return censoring_stats, survival_times
 
 if __name__ == '__main__':
-    patient_X, patient_id = load_patient_data(remove_dirty=2)
+    print(load_survival_data('ADHF', 2))
+    # patient_X, patient_id = load_patient_data(remove_dirty=2)
     # normal_X = load_normal_data()
