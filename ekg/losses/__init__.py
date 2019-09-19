@@ -24,7 +24,7 @@ def negative_hazard_log_likelihood(cs_st, pred_risk):
 
         return neg_likelihood
 
-    cs = K.sign(cs_st) # (?, n_events)
+    cs = K.cast(K.greater(cs_st, 0), K.floatx()) # (?, n_events)
     st = K.abs(cs_st) # (?, n_events)
 
     # (?, n_events) -> (n_events, ?)

@@ -46,3 +46,7 @@ class ConcordanceIndex(keras.callbacks.Callback):
 
             print('Concordance index of {} training set: {:.4f}'.format(self.event_names[i], train_cindex))
             print('Concordance index of {} validation set: {:.4f}'.format(self.event_names[i], valid_cindex))
+
+            # append cindex to logs
+            logs['{}_cindex'.format(self.event_names[i])] = train_cindex
+            logs['val_{}_cindex'.format(self.event_names[i])] = valid_cindex
