@@ -194,11 +194,11 @@ def load_survival_data(event_name, remove_dirty=0):
     # 1: event occurred, 0: survived, -1: pass event, ignore
     dur_df['censoring_stats'] = 1 # event occurred
     dur_df.loc[dur_df[event_dur_name] != dur_df[event_dur_name], 'censoring_stats'] = 0 # Nan
-    dur_df.loc[(dur_df.follow_dur < 0) | (dur_df[event_dur_name] < 0) | (dur_df.path.str.contains('NG')), 'censoring_stats'] = -1
+    dur_df.loc[(dur_df.follow_dur <= 0) | (dur_df[event_dur_name] < 0) | (dur_df.path.str.contains('NG')), 'censoring_stats'] = -1
 
     dur_df['survival_times'] = dur_df[event_dur_name] # event occurred
     dur_df.loc[dur_df[event_dur_name] != dur_df[event_dur_name], 'survival_times'] = dur_df.follow_dur[dur_df[event_dur_name] != dur_df[event_dur_name]] # Nan
-    dur_df.loc[(dur_df.follow_dur < 0) | (dur_df[event_dur_name] < 0) | (dur_df.path.str.contains('NG')), 'survival_times'] = 0
+    dur_df.loc[(dur_df.follow_dur <= 0) | (dur_df[event_dur_name] < 0) | (dur_df.path.str.contains('NG')), 'survival_times'] = 0
 
     censoring_stats = dur_df['censoring_stats'].values
     survival_times = dur_df['survival_times'].values.astype(int)

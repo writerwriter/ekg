@@ -12,7 +12,7 @@ def negative_hazard_log_likelihood(cs_st, pred_risk):
         event_risk = cs_st_risk[2] # (?)
 
         # sort cs by st
-        sorting_indices = tf.argsort(event_st)
+        sorting_indices = tf.argsort(event_st)[::-1]
         sorted_event_cs = tf.gather(event_cs, sorting_indices) # (?)
         sorted_event_risk = tf.gather(event_risk, sorting_indices) # (?)
 
@@ -28,15 +28,15 @@ def negative_hazard_log_likelihood(cs_st, pred_risk):
     st = K.abs(cs_st) # (?, n_events)
 
     # (?, n_events) -> (n_events, ?)
-    cs = tf.roll(cs, 1, axis=0)
-    st = tf.roll(st, 1, axis=0)
-    pred_risk = tf.roll(pred_risk,  1, axis=0)
+    cs = tf.transpose(cs)
+    st = tf.transpose(st)
+    pred_risk = tf.transpose(pred_risk)
 
     nhlls = tf.map_fn(event_nhll,
                         (cs, st, pred_risk),
                         dtype=tf.float32)
 
-    return K.sum(nhlls)
+    return K.mean(nhlls)
 
 def cindex_loss(y, risk):
     cs, st = tf.cast(y[:, 0:1], tf.float32), tf.cast(y[:, 1:2], tf.float32)
