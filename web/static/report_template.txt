@@ -1,0 +1,18 @@
+# EKG ADHF Hazard Prediction Report - {}
+
+## Signal
+![ekg_signal](data:image/png;base64, {})
+
+#### Note: The EKG grid is merely approximated.
+
+## Abnormally Prediction Score: <span style="color:{}">{:.4f}</span>
+![abnormally_explainer](data:image/png;base64, {})
+
+## Event Hazard Prediction
+| Event Name   | Hazard Prediction        |
+|:--------:    |:--------:                |
+| ADHF         | {:.3f}                   |
+| MI           | {:.3f}                   |
+| Stroke       | {:.3f}                   |
+| CVD          | {:.3f}                   |
+| Mortality    | {:.3f}                   |
