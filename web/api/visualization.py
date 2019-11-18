@@ -27,7 +27,7 @@ def plot_ekg(signal, shap_value=None, figsize=None):
             color_signal = shap_value[:, index_channel]
 
             # Create a continuous norm to map from data points to colors
-            norm = plt.Normalize(shap_value.min(), shap_value.max())
+            norm = plt.Normalize(-np.abs(shap_value).max(), np.abs(shap_value).max())
             lc = LineCollection(segments, cmap='seismic', norm=norm)
             # Set the values used for colormapping
             lc.set_array(color_signal)
@@ -55,8 +55,6 @@ def plot_ekg(signal, shap_value=None, figsize=None):
             ax.set_ylim(channel_data.min(), channel_data.max())
 
         plt.margins(x=0, y=0)
-
-
 
     fig.tight_layout()
     return fig

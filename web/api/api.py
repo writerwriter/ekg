@@ -11,13 +11,12 @@ import json
 import multiprocessing as mp
 
 from visualization import plot_ekg
-from initial import map2layer, load_shap_explainer
+from initial import load_shap_explainer
 from initial import load_models, make_random_predictions
 
 import sys, os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-# import abnormal_detection.data_generator
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'abnormal_detection'))
 from data_generator import DataGenerator as ABDataGenerator
 
@@ -122,18 +121,14 @@ def abnormally_explainer(normalized_ekg_signal):
             if index_channel >= 8: # heart sound
                 s = np.convolve(shap_value[..., index_channel], np.ones((200,))/200., mode='same')
             else: # ekg
-                s = np.convolve(shap_value[..., index_channel], np.ones((50,))/50., mode='same')
+                s = np.convolve(shap_value[..., index_channel], np.ones((10,))/10., mode='same')
             processed_singals[..., index_channel] = s
 
         return processed_singals
 
-    layer_to_explain = 0
-    shap_values = ABNORMALLY_EXPLAINER.shap_values(
-                        map2layer(ABNORMALLY_MODELS[0], normalized_ekg_signal, layer_to_explain),
-                        ranked_outputs=np.array([[1]]),
-                        output_rank_order='custom')
+    negative_shap_value, positive_shap_value = ABNORMALLY_EXPLAINER.shap_values(normalized_ekg_signal)
 
-    return smoothing(shap_values[0][0][0]) # (10000, 10)
+    return smoothing(positive_shap_value[0]) # (10000, 10)
 abnormally_explainer(np.random.rand(1, 10000, 10))
 
 def plot_and_encode(signal, shap_value=None, figsize=None):
