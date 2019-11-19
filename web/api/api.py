@@ -19,6 +19,9 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'abnormal_detection'))
 from data_generator import DataGenerator as ABDataGenerator
+sys.path.remove(os.path.join(os.path.dirname(__file__), '..', '..', 'abnormal_detection'))
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', 'hazard_prediction'))
+from data_generator import DataGenerator as HZDataGenerator
 
 from ekg.utils.train_utils import allow_gpu_growth; allow_gpu_growth()
 from ekg.audicor_reader import denoise
@@ -31,9 +34,12 @@ MODEL_GRAPH = tf.get_default_graph()
 
 ABNORMALLY_MODELS, ABNORMALLY_MEANS_AND_STDS = load_models(task='abnormally')
 ABNORMALLY_EXPLAINER = load_shap_explainer(MODEL_GRAPH, ABDataGenerator(remove_dirty=2).get()[0][0], ABNORMALLY_MODELS[0])
+ABNORMALLY_EXPLAINER.shap_values(np.random.rand(1, 10000, 10))
 for model in ABNORMALLY_MODELS: make_random_predictions(MODEL_GRAPH, model)
 
 HAZARD_MODELS, HAZARD_MEANS_AND_STDS = load_models(task='hazard')
+HAZARD_EXPLAINER = load_shap_explainer(MODEL_GRAPH, HZDataGenerator(remove_dirty=2).get()[0][0], HAZARD_MODELS[0])
+HAZARD_EXPLAINER.shap_values(np.random.rand(5, 10000, 10))
 for model in HAZARD_MODELS: make_random_predictions(MODEL_GRAPH, model)
 
 def get_ekg(f, do_bandpass_filter=True, filter_lowcut=30, filter_highcut=100):
@@ -97,7 +103,7 @@ def hazard_preprocessing(ekg_signal):
 
     return ekg_processed
 
-def abnormally_score(ekg_signal):
+def abnormally_prediction(ekg_signal):
     # predict
     global MODEL_GRAPH
     with MODEL_GRAPH.as_default():
@@ -113,23 +119,19 @@ def hazard_prediction(ekg_signal):
 
     return prediction_scores.mean(axis=0)
 
-def abnormally_explainer(normalized_ekg_signal):
-    def smoothing(shap_value):
-        # processing signals
-        processed_singals = np.zeros_like(shap_value)
+def smoothing(shap_value):
+    '''
+        shap_value: (?, 10000, 10)
+    '''
+    processed_singals = np.zeros_like(shap_value)
+    for index_shap in range(shap_value.shape[0]):
         for index_channel in range(shap_value.shape[-1]):
             if index_channel >= 8: # heart sound
-                s = np.convolve(shap_value[..., index_channel], np.ones((200,))/200., mode='same')
+                s = np.convolve(shap_value[index_shap, :, index_channel], np.ones((200,))/200., mode='same')
             else: # ekg
-                s = np.convolve(shap_value[..., index_channel], np.ones((10,))/10., mode='same')
-            processed_singals[..., index_channel] = s
-
-        return processed_singals
-
-    negative_shap_value, positive_shap_value = ABNORMALLY_EXPLAINER.shap_values(normalized_ekg_signal)
-
-    return smoothing(positive_shap_value[0]) # (10000, 10)
-abnormally_explainer(np.random.rand(1, 10000, 10))
+                s = np.convolve(shap_value[index_shap, :, index_channel], np.ones((10,))/10., mode='same')
+            processed_singals[index_shap, :, index_channel] = s
+    return processed_singals
 
 def plot_and_encode(signal, shap_value=None, figsize=None):
     return fig_encode(plot_ekg(signal, shap_value, figsize))
@@ -140,26 +142,33 @@ def predict(ekg_raw): # 10, 10000
     ekg_processed = denoise.denoise(ekg_processed, number_channels=8)
     ekg_processed = np.rollaxis(ekg_processed, 1, 0) # 10000, 10
 
-    with mp.Pool(processes=2) as workers:
+    with mp.Pool(processes=7) as workers:
         # generate image in the background
         denoised_ekg_plot = workers.apply_async(plot_and_encode, (ekg_processed, ))
 
         # abnormally detection
         abnormally_signal = abnormally_preprocessing(ekg_processed)
-        ab_shap_value = abnormally_explainer(abnormally_signal)
+        ab_shap_value = smoothing(np.array(ABNORMALLY_EXPLAINER.shap_values(abnormally_signal))[0])[0]
 
         ab_shap_plot = workers.apply_async(plot_and_encode, (ekg_processed, ab_shap_value))
-        ab_score = abnormally_score(abnormally_signal)
 
         # hazard prediction
         hazard_signal = hazard_preprocessing(ekg_processed)
+        hazard_shap_value = smoothing(np.array(HAZARD_EXPLAINER.shap_values(hazard_signal)).squeeze(axis=1))
+
+        hazard_shap_plots = list()
+        for hsv in hazard_shap_value:
+            hazard_shap_plots.append(workers.apply_async(plot_and_encode, (ekg_processed, hsv)))
+
+        ab_score = abnormally_prediction(abnormally_signal)
         hazard_score = hazard_prediction(hazard_signal)
 
         rtn_dict = {
             'ekg_plot': denoised_ekg_plot.get().decode(),
             'abnormally_score': ab_score.tolist(),
             'abnormally_explainer_plot': ab_shap_plot.get().decode(),
-            'hazard_score': hazard_score.tolist()
+            'hazard_score': hazard_score.tolist(),
+            'hazard_explainer_plot': [r.get().decode() for r in hazard_shap_plots]
         }
 
     return json.dumps(rtn_dict)

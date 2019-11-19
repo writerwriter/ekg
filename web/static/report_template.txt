@@ -9,10 +9,25 @@
 ![abnormally_explainer](data:image/png;base64, {})
 
 ## Event Hazard Prediction
-| Event Name   | Hazard Prediction        |
-|:--------:    |:--------:                |
-| ADHF         | {:.3f}                   |
-| MI           | {:.3f}                   |
-| Stroke       | {:.3f}                   |
-| CVD          | {:.3f}                   |
-| Mortality    | {:.3f}                   |
+| Event Name                 | Hazard Prediction        |
+|:--------:                  |:--------:                |
+| [ADHF](#adhf)              | {:.3f}                   |
+| [MI](#mi)                  | {:.3f}                   |
+| [Stroke](#stroke)          | {:.3f}                   |
+| [CVD](#cvd)                | {:.3f}                   |
+| [Mortality](#mortality)    | {:.3f}                   |
+
+### ADHF
+![ADHF](data:image/png;base64, {})
+
+### MI
+![MI](data:image/png;base64, {})
+
+### Stroke
+![Stroke](data:image/png;base64, {})
+
+### CVD
+![CVD](data:image/png;base64, {})
+
+### Mortality
+![Mortality](data:image/png;base64, {})

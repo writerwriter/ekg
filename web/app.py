@@ -70,9 +70,11 @@ def receive_ekg():
                                 'red' if results['abnormally_score'] > 0.5 else 'blue',
                                 results['abnormally_score'],
                                 results['abnormally_explainer_plot'],
-                                *results['hazard_score'])
+                                *results['hazard_score'],
+                                *results['hazard_explainer_plot']
+                                )
 
-    html_report = markdown2.markdown(report, extras=['tables'])
+    html_report = markdown2.markdown(report, extras=['tables', 'header-ids'])
     html_report = '<head><link rel="stylesheet" href="github.css"></head>\n' +\
                         '<div class="markdown-body">' + html_report + '</div>'
 
