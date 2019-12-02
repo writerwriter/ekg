@@ -6,6 +6,7 @@ from functools import partial
 import re
 import pandas as pd
 import datetime
+import warnings
 
 import better_exceptions; better_exceptions.hook()
 
@@ -13,10 +14,14 @@ from ekg.utils.data_utils import load_patient_data, load_normal_data
 from ekg.audicor_reader import denoise
 
 def preprocessing(X):
-    __mp_denoise = partial(denoise.denoise, number_channels=8)
-    with mp.Pool(processes=mp.cpu_count()*2) as workers:
-        for i, xi in tqdm(enumerate(workers.imap(__mp_denoise, X)), desc='preprocessing', total=X.shape[0]):
-            X[i] = xi
+    '''
+        X: (?, 10, 10000)
+    '''
+    warnings.filterwarnings("ignore")
+    for i, xi in enumerate(tqdm(X, desc='preprocessing')):
+        X[i] = denoise.denoise(xi, number_channels=8) # only denoise the first 8 ekg channels
+
+    return
 
 def generate_survival_data(event_names=['ADHF', 'MI', 'Stroke', 'CVD', 'Mortality']):
     def get_info(path_string):
@@ -84,5 +89,5 @@ def generate_ekg_data():
     return None
 
 if __name__ == '__main__':
-    # generate_ekg_data()
+    generate_ekg_data()
     generate_survival_data().to_csv('./data/path_dur.csv', index=False)

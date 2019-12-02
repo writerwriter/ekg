@@ -71,6 +71,13 @@ class DataGenerator:
         self.X = np.swapaxes(self.X, 1, 2) # (?, 10000, 10)
 
     def get(self):
+        '''
+            output:
+                train_set, valid_set, test_set:
+                    {train/valid/test}_set: (X, y):
+                        X: (num_samples, signal_length, num_channels)
+                        y: (num_samples, num_events, 2) -> censoring_stats, survival_times
+        '''
         train_set, valid_set, test_set = self.split()
 
         # do normalize using means and stds from training data
@@ -122,42 +129,5 @@ class DataGenerator:
             X[i] = self.augmenter.augment(Xi)
         return X, y
 
-    @staticmethod
-    def shuffle(X, y, batch_size):
-        def sort_batch(X, cs, st):
-            sorting_indices = np.argsort(st)[::-1]
-            X = X[sorting_indices]
-            cs = cs[sorting_indices]
-            st = st[sorting_indices]
-            return X, cs, st
-
-        # copy may not be needed, but is done anyway
-        X, y = copy.deepcopy(X), copy.deepcopy(y)
-        cs, st = y[:, 0], y[:, 1]
-
-        # shuffle X and y
-        shuffled_indices = np.random.choice(list(range(X.shape[0])), size=X.shape[0], replace=False)
-        X, cs, st = X[shuffled_indices], cs[shuffled_indices], st[shuffled_indices]
-
-        for index_batch in range(int(np.ceil(X.shape[0] / batch_size))):
-            index_start = int(index_batch * batch_size)
-            index_end = min(X.shape[0], index_start + batch_size)
-            m = np.s_[index_start: index_end]
-            X[m], cs[m], st[m] = sort_batch(X[m], cs[m], st[m])
-
-        y = np.array([cs, st]).T
-        return X, y
-
-    def batch_generator(self, X, y, batch_size, shuffle=True, data_augmentation=False):
-        while True:
-            if shuffle:
-                X, y = self.shuffle(X, y, batch_size)
-
-            for index_batch in range(int(np.ceil(X.shape[0] / batch_size))):
-                index_start = int(index_batch * batch_size)
-                index_end = min(X.shape[0], index_start + batch_size)
-                m = np.s_[index_start: index_end]
-                if data_augmentation:
-                    yield self.augment_batch(X[m], y[m])
-                else:
-                    yield X[m], y[m]
+if __name__ == '__main__':
+    g = DataGenerator(remove_dirty=2)

@@ -19,7 +19,7 @@ from keras_radam import RAdam
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 from data_generator import DataGenerator
-# from eval import evaluation
+from eval import evaluation
 from ekg.callbacks import LogBest, ConcordanceIndex
 
 from ekg.models.backbone import backbone
@@ -33,16 +33,16 @@ set_wandb_config({
     'sincconv_filter_length': 31,
     'sincconv_nfilters': 8,
 
-    'branch_nlayers': 4,
+    'branch_nlayers': 3,
 
-    'ekg_kernel_length': 35,
-    'hs_kernel_length': 13,
+    'ekg_kernel_length': 21,
+    'hs_kernel_length': 7,
 
     'final_nlayers': 3,
-    'final_kernel_length': 7,
+    'final_kernel_length': 13,
     'final_nonlocal_nlayers': 0,
 
-    'kernel_initializer': 'glorot_uniform',
+    'kernel_initializer': 'he_normal',
     'skip_connection': False,
     'crop_center': True,
 
@@ -121,7 +121,7 @@ def train():
                 validation_data=(valid_set[0], to_cs_st(valid_set[1])),
                 callbacks=callbacks, shuffle=True)
     model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
-    # evaluation(model, test_set)
+    evaluation(model, test_set, event_names)
 
 if __name__ == '__main__':
     train()
