@@ -42,34 +42,42 @@ def _heart_sound_branch(input, sincconv_filter_length, sincconv_nfilters, nlayer
 
     return hs
 
-def backbone(config, include_top=False, classification=True, classes=2):
-    total_input = Input((10000, 10))
-    ekg_input = Lambda(lambda x: x[:, :, :8], name='ekg_input')(total_input) # (10000, 8)
-    heart_sound_input = Lambda(lambda x: x[:, :, 8:], name='hs_input')(total_input) # (10000, 2)
-
+def backbone(config, include_top=False, classification=True, classes=2, n_ekg_channels=8, n_hs_channels=2):
+    total_input = Input((10000, n_ekg_channels + n_hs_channels))
+    
     # ekg branch
-    ekg = _ekg_branch(ekg_input, config.branch_nlayers, config.ekg_kernel_length, config.kernel_initializer, config.skip_connection)
+    if n_ekg_channels != 0:
+        ekg_input = Lambda(lambda x, n_ekg_channels: x[:, :, :n_ekg_channels], 
+                                    arguments={'n_ekg_channels': n_ekg_channels}, 
+                                    name='ekg_input')(total_input) # (10000, 8)
+        ekg = _ekg_branch(ekg_input, config.branch_nlayers, config.ekg_kernel_length, config.kernel_initializer, config.skip_connection)
 
     # heart sound branch
-    hs_outputs = list()
-    hs = Lambda(lambda x: K.expand_dims(x[:, :, 0], -1), name='hs_split_0')(heart_sound_input)
-    hs_outputs.append(_heart_sound_branch(hs, config.sincconv_filter_length,
-                                                config.sincconv_nfilters, config.branch_nlayers,
-                                                config.hs_kernel_length, config.kernel_initializer,
-                                                config.skip_connection, name_prefix='hs_branch_0_'))
+    if n_hs_channels != 0:
+        heart_sound_input = Lambda(lambda x, n_hs_channels: x[:, :, -n_hs_channels:], 
+                                    arguments={'n_hs_channels': n_hs_channels}, 
+                                    name='hs_input')(total_input) # (10000, 2)
 
-    hs = Lambda(lambda x: K.expand_dims(x[:, :, 1], -1), name='hs_split_1')(heart_sound_input)
-    hs_outputs.append(_heart_sound_branch(hs, config.sincconv_filter_length,
-                                                config.sincconv_nfilters, config.branch_nlayers,
-                                                config.hs_kernel_length, config.kernel_initializer,
-                                                config.skip_connection, name_prefix='hs_branch_1_'))
+        hs_outputs = list()
+        for i in range(n_hs_channels):
+            hs = Lambda(lambda x, i: K.expand_dims(x[:, :, i], -1), 
+                                    arguments={'i': i}, 
+                                    name='hs_split_{}'.format(i))(heart_sound_input)
+            hs_outputs.append(_heart_sound_branch(hs, config.sincconv_filter_length,
+                                                        config.sincconv_nfilters, config.branch_nlayers,
+                                                        config.hs_kernel_length, config.kernel_initializer,
+                                                        config.skip_connection, name_prefix='hs_branch_{}_'.format(i)))
+        hs = Add(name='hs_merge')(hs_outputs)
 
-    hs = Add(name='hs_merge')(hs_outputs)
-    if config.crop_center:
-        ekg = CenterCropLike(name='ekg_crop')([ekg, hs])
+    # merge block
+    if n_ekg_channels != 0 and n_hs_channels != 0:
+        if config.crop_center:
+            ekg = CenterCropLike(name='ekg_crop')([ekg, hs])
+        else:
+            ekg = LeftCropLike(name='ekg_crop')([ekg, hs])
+        output = Concatenate(axis=-1, name='hs_ekg_merge')([hs, ekg])
     else:
-        ekg = LeftCropLike(name='ekg_crop')([ekg, hs])
-    output = Concatenate(axis=-1, name='hs_ekg_merge')([hs, ekg])
+        output = ekg if n_ekg_channels != 0 else hs
 
     if include_top: # final layers
         for i in range(config.final_nlayers):

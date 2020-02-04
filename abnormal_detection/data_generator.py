@@ -11,7 +11,9 @@ from ekg.utils.data_utils import patient_split, DataAugmenter
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 
 class DataGenerator:
-    def __init__(self, remove_dirty=0, ekg_scaling_prob=0., hs_scaling_prob=0., time_stretch_prob=0.):
+    def __init__(self, remove_dirty=0,
+                     ekg_scaling_prob=0., hs_scaling_prob=0., time_stretch_prob=0.,
+                     n_ekg_channels=8, n_hs_channels=2):
         self.X, self.y = None, None
         if remove_dirty > 0:
             self.patient_X = np.load(os.path.join(DATA_DIR, 'cleaned_{:d}_patient_X.npy'.format(remove_dirty)))
@@ -21,15 +23,20 @@ class DataGenerator:
             self.patient_id = np.load(os.path.join(DATA_DIR, 'patient_id.npy'))
 
         self.normal_X = np.load(os.path.join(DATA_DIR, 'normal_X.npy')) # (?, 10, 10000)
-        self.preprocessing()
+        self.preprocessing(n_ekg_channels, n_hs_channels)
+
+        # NOTE: augmenter is not working right now
         self.augmenter = DataAugmenter(indices_channel_ekg=[0, 1, 2, 3, 4, 5, 6, 7], indices_channel_hs=[8, 9],
                                         ekg_scaling_prob=ekg_scaling_prob, hs_scaling_prob=hs_scaling_prob,
                                         time_stretch_prob=time_stretch_prob)
 
-    def preprocessing(self):
+    def preprocessing(self, n_ekg_channels=8, n_hs_channels=2):
         # combine normal and patient
         self.X = np.append(self.patient_X, self.normal_X, axis=0) # (?, 10, 10000)
         self.y = np.array([1]*self.patient_X.shape[0] + [0]*self.normal_X.shape[0])
+
+        # restrict the number of ekg/hs channels
+        self.X = self.X[:, np.append(np.arange(n_ekg_channels), np.arange(8, 8+n_hs_channels)) ,:]
 
         # change dimension
         # ?, n_channels, n_points -> ?, n_points, n_channels

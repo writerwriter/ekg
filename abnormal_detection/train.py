@@ -11,7 +11,7 @@ from ekg.utils.train_utils import set_wandb_config
 # for loging result
 import wandb
 from wandb.keras import WandbCallback
-wandb.init(project='ekg-abnormal_detection', entity='toosyou') # name='remove_dirty2_best_param_test',
+wandb.init(project='ekg-abnormal_detection', entity='toosyou')
 
 from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
@@ -41,17 +41,24 @@ set_wandb_config({
     'crop_center': True,
 
     'remove_dirty': 2,
+
+    'n_ekg_channels': 0,
+    'n_hs_channels': 2,
 })
 
 def train():
-    g = DataGenerator(remove_dirty=wandb.config.remove_dirty)
+    g = DataGenerator(remove_dirty=wandb.config.remove_dirty, 
+                        n_ekg_channels=wandb.config.n_ekg_channels, 
+                        n_hs_channels=wandb.config.n_hs_channels)
     train_set, valid_set, test_set = g.get()
 
     # save means and stds to wandb
     with open(os.path.join(wandb.run.dir, 'means_and_stds.pl'), 'wb') as f:
         pickle.dump(g.means_and_stds, f)
 
-    model = backbone(wandb.config, include_top=True, classification=True, classes=2)
+    model = backbone(wandb.config, include_top=True, classification=True, classes=2, 
+                        n_ekg_channels=wandb.config.n_ekg_channels,
+                        n_hs_channels=wandb.config.n_hs_channels)
     model.compile(Adam(amsgrad=True), 'binary_crossentropy', metrics=['acc'])
     model.summary()
 

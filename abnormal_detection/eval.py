@@ -17,7 +17,7 @@ from keras.models import load_model
 
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 
-from ekg.layers import LeftCropLike
+from ekg.layers import LeftCropLike, CenterCropLike
 from ekg.layers.sincnet import SincConv1D
 from ekg.utils.eval_utils import print_cm
 
@@ -45,15 +45,25 @@ def evaluation(models, test_set):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Abnormal detection evaluation.')
+    parser.add_argument('-ne', dest='n_ekg_channels', type=int, default=8,
+                        help='Number of ekg channels.')
+    parser.add_argument('-nh', dest='n_hs_channels', type=int, default=2,
+                        help='Number of heart sound channels.')                        
     parser.add_argument('model_filenames', metavar='filename', type=str, nargs='+',
                         help='filenames of models to be evaluated.')
 
     args = parser.parse_args()
 
+    custom_objects = {
+        'SincConv1D': SincConv1D,
+        'LeftCropLike': LeftCropLike, 
+        'CenterCropLike': CenterCropLike
+    }
+
     models = list()
     for fn in args.model_filenames:
-        models.append(load_model(fn, custom_objects={'SincConv1D': SincConv1D, 'LeftCropLike': LeftCropLike}, compile=False))
+        models.append(load_model(fn, custom_objects=custom_objects, compile=False))
 
     models[0].summary()
-    train_set, valid_set, test_set = DataGenerator(remove_dirty=2).get()
+    train_set, valid_set, test_set = DataGenerator(remove_dirty=2, n_ekg_channels=args.n_ekg_channels, n_hs_channels=args.n_hs_channels).get()
     evaluation(models, test_set)
