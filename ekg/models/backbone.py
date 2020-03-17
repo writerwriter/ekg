@@ -42,24 +42,24 @@ def _heart_sound_branch(input, sincconv_filter_length, sincconv_nfilters, nlayer
 
     return hs
 
-def backbone(config, include_top=False, classification=True, classes=2, n_ekg_channels=8, n_hs_channels=2):
-    total_input = Input((10000, n_ekg_channels + n_hs_channels))
+def backbone(config, include_top=False, classification=True, classes=2):
+    total_input = Input((10000, config.n_ekg_channels + config.n_hs_channels))
     
     # ekg branch
-    if n_ekg_channels != 0:
+    if config.n_ekg_channels != 0:
         ekg_input = Lambda(lambda x, n_ekg_channels: x[:, :, :n_ekg_channels], 
-                                    arguments={'n_ekg_channels': n_ekg_channels}, 
+                                    arguments={'n_ekg_channels': config.n_ekg_channels}, 
                                     name='ekg_input')(total_input) # (10000, 8)
         ekg = _ekg_branch(ekg_input, config.branch_nlayers, config.ekg_kernel_length, config.kernel_initializer, config.skip_connection)
 
     # heart sound branch
-    if n_hs_channels != 0:
+    if config.n_hs_channels != 0:
         heart_sound_input = Lambda(lambda x, n_hs_channels: x[:, :, -n_hs_channels:], 
-                                    arguments={'n_hs_channels': n_hs_channels}, 
+                                    arguments={'n_hs_channels': config.n_hs_channels}, 
                                     name='hs_input')(total_input) # (10000, 2)
 
         hs_outputs = list()
-        for i in range(n_hs_channels):
+        for i in range(config.n_hs_channels):
             hs = Lambda(lambda x, i: K.expand_dims(x[:, :, i], -1), 
                                     arguments={'i': i}, 
                                     name='hs_split_{}'.format(i))(heart_sound_input)
@@ -70,14 +70,14 @@ def backbone(config, include_top=False, classification=True, classes=2, n_ekg_ch
         hs = Add(name='hs_merge')(hs_outputs)
 
     # merge block
-    if n_ekg_channels != 0 and n_hs_channels != 0:
+    if config.n_ekg_channels != 0 and config.n_hs_channels != 0:
         if config.crop_center:
             ekg = CenterCropLike(name='ekg_crop')([ekg, hs])
         else:
             ekg = LeftCropLike(name='ekg_crop')([ekg, hs])
         output = Concatenate(axis=-1, name='hs_ekg_merge')([hs, ekg])
     else:
-        output = ekg if n_ekg_channels != 0 else hs
+        output = ekg if config.n_ekg_channels != 0 else hs
 
     if include_top: # final layers
         for i in range(config.final_nlayers):

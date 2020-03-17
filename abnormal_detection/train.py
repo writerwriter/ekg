@@ -56,9 +56,7 @@ def train():
     with open(os.path.join(wandb.run.dir, 'means_and_stds.pl'), 'wb') as f:
         pickle.dump(g.means_and_stds, f)
 
-    model = backbone(wandb.config, include_top=True, classification=True, classes=2, 
-                        n_ekg_channels=wandb.config.n_ekg_channels,
-                        n_hs_channels=wandb.config.n_hs_channels)
+    model = backbone(wandb.config, include_top=True, classification=True, classes=2)
     model.compile(Adam(amsgrad=True), 'binary_crossentropy', metrics=['acc'])
     model.summary()
 
