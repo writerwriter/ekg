@@ -213,7 +213,6 @@ if __name__ == '__main__':
     DO_BANDPASS_FILTER = config['Audicor_10s'].getboolean('do_bandpass_filter')
     FILTER_LOWCUT, FILTER_HIGHCUT = int(config['Audicor_10s']['bandpass_filter_lowcut']), int(config['Audicor_10s']['bandpass_filter_highcut'])
 
-    '''
     normal_X, abnormal_X, normal_filenames, abnormal_filenames = read_data(NORMAL_DIR, 
                                                                     ABNORMAL_DIR, 
                                                                     DO_BANDPASS_FILTER, 
@@ -226,7 +225,6 @@ if __name__ == '__main__':
 
     np.save(os.path.join(OUTPUT_DIR, 'abnormal_X.npy'), abnormal_X)
     np.save(os.path.join(OUTPUT_DIR, 'abnormal_filenames.npy'), abnormal_filenames)
-    '''
 
     abnormal_event_df = generate_survival_data(OLD_LABEL_FILENAME, NEW_LABEL_FILENAME)
     abnormal_event_df.to_csv(os.path.join(OUTPUT_DIR, 'abnormal_event.csv'), index=False)
