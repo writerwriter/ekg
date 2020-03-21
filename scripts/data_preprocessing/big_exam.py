@@ -133,6 +133,9 @@ def generate_survival_data(event_names=None):
     # drop files with no label
     output_df = output_df.dropna(subset=['code']).reset_index(drop=True)
 
+    # rename code column to subject_id
+    output_df = output_df.rename(columns={'code': 'subject_id'}, errors='ignore')
+
     # remove dirty data
     output_df = drop_dirty(output_df)
 
