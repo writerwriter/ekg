@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import pickle
+import numpy as np
+import configparser
 import better_exceptions; better_exceptions.hook()
 
 import os, sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 from ekg.utils.train_utils import allow_gpu_growth; allow_gpu_growth()
 from ekg.utils.train_utils import set_wandb_config
@@ -13,17 +15,24 @@ import wandb
 from wandb.keras import WandbCallback
 wandb.init(project='ekg-abnormal_detection', entity='toosyou')
 
+import keras
 from keras.optimizers import Adam
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
-
-from data_generator import DataGenerator
-from eval import evaluation
 from ekg.callbacks import LogBest
+
+from ekg.utils import data_utils
+from ekg.utils.data_utils import BaseDataGenerator
+from eval import evaluation
 
 from ekg.models.backbone import backbone
 
+# read config
+config = configparser.ConfigParser()
+config.read('./config.cfg')
+
 # search result
 set_wandb_config({
+    # model
     'sincconv_filter_length': 31,
     'sincconv_nfilters': 8,
 
@@ -40,16 +49,45 @@ set_wandb_config({
     'skip_connection': False,
     'crop_center': True,
 
-    'remove_dirty': 2,
+    # data
+    'remove_dirty': 2, # deprecated, always remove dirty data
+    'datasets': ['big_exam'], # 'big_exam', 'audicor_10s'
 
-    'n_ekg_channels': 0,
-    'n_hs_channels': 2,
-})
+    'big_exam_ekg_channels': [0, 1, 2, 3, 4, 5, 6, 7],
+    'big_exam_hs_channels': [8, 9],
+
+    'audicor_10s_ekg_channels': [0],
+    'audicor_10s_hs_channels': [1],
+
+    'downsample': 'direct', # average
+
+}, include_preprocessing_setting=True)
+
+set_wandb_config({
+    'sampling_rate': 500 if 'audicor_10s' in wandb.config.datasets else 1000,
+    'n_ekg_channels': data_utils.calculate_n_ekg_channels(wandb.config),
+    'n_hs_channels': data_utils.calculate_n_hs_channels(wandb.config)
+}, include_preprocessing_setting=False)
+
+class DataGenerator(BaseDataGenerator):
+    def __init__(self):
+        super().__init__(big_exam_dir = config['Big_Exam']['output_dir'],
+                            audicor_10s_dir = config['Audicor_10s']['output_dir'],
+                            wandb_config = wandb.config)
+
+    def get_abnormal_y(self):
+        return np.ones((self.abnormal_X.shape[0], ))
+
+    def get_normal_y(self):
+        return np.zeros((self.normal_X.shape[0], ))
+
+    def preprocessing(self):
+        # make ys one-hot
+        self.normal_y = keras.utils.to_categorical(self.normal_y, num_classes=2, dtype=np.int)
+        self.abnormal_y = keras.utils.to_categorical(self.abnormal_y, num_classes=2, dtype=np.int)
 
 def train():
-    g = DataGenerator(remove_dirty=wandb.config.remove_dirty, 
-                        n_ekg_channels=wandb.config.n_ekg_channels, 
-                        n_hs_channels=wandb.config.n_hs_channels)
+    g = DataGenerator()
     train_set, valid_set, test_set = g.get()
 
     # save means and stds to wandb
