@@ -19,7 +19,7 @@
             * Stroke
             * CVD
             * Mortality
-        * attributes:
+        * attributes
             * filename
             * subject_id
             * ADHF_censoring_status
@@ -46,7 +46,7 @@
             * ADHF
             * CVD
             * Mortality
-        * attributes:
+        * attributes
             * filename
             * measurement_date
             * subject_id
