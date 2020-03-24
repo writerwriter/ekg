@@ -1,14 +1,17 @@
 import numpy as np
 from sklearn.model_selection import train_test_split
 from scipy.ndimage.filters import gaussian_filter
+import data
 
 import os
 DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
 
 class DataGenerator:
     def __init__(self, config, model_output_shape=None):
+        """
         self.patient_X = np.load(os.path.join(DATA_DIR, 'seg_X.npy')) # (90, 8, 10000)
         self.patient_y= np.load(os.path.join(DATA_DIR, 'seg_y.npy')) # (90, 6, 10000)
+        """
 
         self.means_and_stds = None
         self.config = config
@@ -18,6 +21,11 @@ class DataGenerator:
         self.preprocessing()
 
     def preprocessing(self):
+        xy = data.load_dataset()
+        self.X = xy['x']
+        self.y = xy['y']
+
+        """
         self.X = np.swapaxes(self.patient_X, 1, 2) # (90, 10000, 8)
         self.y = np.swapaxes(self.patient_y, 1, 2) # (90, 10000, 6) # pqrst
 
@@ -36,7 +44,7 @@ class DataGenerator:
 
         else: # bigexam
             pass
-
+        """
         if self.config.regression:
             # remove the last channel of y
             self.y = self.y[:, :, :-1]
@@ -82,7 +90,7 @@ class DataGenerator:
             X = X[..., np.newaxis]
 
             # y: (?, signal_length, 5 or 6) -> (? * 8, signal_length, 5 or 6)
-            y = np.repeat(y, 8, axis=0)
+            y = np.repeat(y, 12, axis=0)
 
             return [X, y]
 
