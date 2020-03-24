@@ -43,7 +43,7 @@ def _heart_sound_branch(input, sincconv_filter_length, sincconv_nfilters, nlayer
     return hs
 
 def backbone(config, include_top=False, classification=True, classes=2):
-    total_input = Input((10000, config.n_ekg_channels + config.n_hs_channels))
+    total_input = Input((config.sampling_rate*10, config.n_ekg_channels + config.n_hs_channels))
     
     # ekg branch
     if config.n_ekg_channels != 0:
@@ -67,7 +67,10 @@ def backbone(config, include_top=False, classification=True, classes=2):
                                                         config.sincconv_nfilters, config.branch_nlayers,
                                                         config.hs_kernel_length, config.kernel_initializer,
                                                         config.skip_connection, name_prefix='hs_branch_{}_'.format(i)))
-        hs = Add(name='hs_merge')(hs_outputs)
+        if config.n_hs_channels >= 2:
+            hs = Add(name='hs_merge')(hs_outputs)
+        else: # no need to merge
+            hs = hs_outputs[0]
 
     # merge block
     if config.n_ekg_channels != 0 and config.n_hs_channels != 0:

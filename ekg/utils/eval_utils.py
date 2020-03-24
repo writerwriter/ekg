@@ -1,3 +1,18 @@
+import yaml
+
+class YamlParser():
+    def __init__(self):
+        self.config = None
+
+    def read(self, filename):
+        with open(filename, 'r') as f:
+            self.config = yaml.safe_load(f)
+
+        for key, value in self.config.items():
+            setattr(self, key, value)
+
+        return self
+
 def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=None):
     '''pretty print for confusion matrixes'''
     columnwidth = max([len(x) for x in labels] + [5])  # 5 is value length

@@ -328,7 +328,7 @@ def calculate_n_ekg_channels(config):
         n_ekg_channels = min(n_ekg_channels, len(config.big_exam_ekg_channels))
     
     if 'audicor_10s' in config.datasets:
-        n_ekg_channels = min(n_ekg_channels, len(config.audicor_ekg_channels))
+        n_ekg_channels = min(n_ekg_channels, len(config.audicor_10s_ekg_channels))
 
     return n_ekg_channels
 
@@ -338,7 +338,7 @@ def calculate_n_hs_channels(config):
         n_hs_channels = min(n_hs_channels, len(config.big_exam_hs_channels))
     
     if 'audicor_10s' in config.datasets:
-        n_hs_channels = min(n_hs_channels, len(config.audicor_hs_channels))
+        n_hs_channels = min(n_hs_channels, len(config.audicor_10s_hs_channels))
 
     return n_hs_channels
 

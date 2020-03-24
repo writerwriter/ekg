@@ -22,7 +22,7 @@ from ekg.callbacks import LogBest
 
 from ekg.utils import data_utils
 from ekg.utils.data_utils import BaseDataGenerator
-from eval import evaluation
+import evaluation
 
 from ekg.models.backbone import backbone
 
@@ -51,9 +51,9 @@ set_wandb_config({
 
     # data
     'remove_dirty': 2, # deprecated, always remove dirty data
-    'datasets': ['big_exam'], # 'big_exam', 'audicor_10s'
+    'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
 
-    'big_exam_ekg_channels': [0, 1, 2, 3, 4, 5, 6, 7],
+    'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
     'big_exam_hs_channels': [8, 9],
 
     'audicor_10s_ekg_channels': [0],
@@ -70,10 +70,10 @@ set_wandb_config({
 }, include_preprocessing_setting=False)
 
 class DataGenerator(BaseDataGenerator):
-    def __init__(self):
+    def __init__(self, config=config, wandb_config=wandb.config):
         super().__init__(big_exam_dir = config['Big_Exam']['output_dir'],
                             audicor_10s_dir = config['Audicor_10s']['output_dir'],
-                            wandb_config = wandb.config)
+                            wandb_config = wandb_config)
 
     def get_abnormal_y(self):
         return np.ones((self.abnormal_X.shape[0], ))
@@ -107,7 +107,24 @@ def train():
 
     model.fit(train_set[0], train_set[1], batch_size=64, epochs=40, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
     model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
-    evaluation(model, test_set)
+
+    # load best model from wandb and evaluate
+    print('Evaluate the BEST model!')
+
+    from keras.models import load_model
+    from ekg.layers import LeftCropLike, CenterCropLike
+    from ekg.layers.sincnet import SincConv1D
+
+    custom_objects = {
+        'SincConv1D': SincConv1D,
+        'LeftCropLike': LeftCropLike, 
+        'CenterCropLike': CenterCropLike
+    }
+
+    model = load_model(os.path.join(wandb.run.dir, 'model-best.h5'),
+                        custom_objects=custom_objects, compile=False)
+
+    evaluation.evaluation(model, test_set)
 
 if __name__ == '__main__':
     train()
