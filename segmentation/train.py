@@ -10,7 +10,7 @@ from ekg.utils.train_utils import set_wandb_config
 # for loging result
 import wandb
 from wandb.keras import WandbCallback
-wandb.init(project='ekg-segmentation', entity='toosyou')
+wandb.init(project='ekg-segmentation')
 
 import numpy as np
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
@@ -54,7 +54,7 @@ set_wandb_config({
     'window_moving_average': 0,
     'window_weight_forgiveness': 0,
 
-    'regression': True,
+    'regression': False,
     'label_blur_kernel': 11,
     'label_normalization': True,
     'label_normalization_value': 512, # TODO: calculate it by peak and background ratio

@@ -89,7 +89,7 @@ def unet_lstm(config):
     if config.seg_setting == 'split':
         output_shape = 2
     else: # pqrst
-        output_shape = 5 if config.regression else 6
+        output_shape = 4
 
     if config.ending_lstm: # NOTE: this is currently not working
         net = LSTM(units = 8, return_sequences = True)(net)
