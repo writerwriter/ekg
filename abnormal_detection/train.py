@@ -90,10 +90,13 @@ class AbnormalAudicor10sLoader(Audicor10sLoader):
         return np.zeros((self.normal_X.shape[0], ))
 
 def train():
-    big_exam_loader = AbnormalBigExamLoader(wandb_config=wandb.config)
-    audicor_10s_loader = AbnormalAudicor10sLoader(wandb_config=wandb.config)
+    dataloaders = list()
+    if 'big_exam' in wandb.config.datasets:
+        dataloaders.append(AbnormalBigExamLoader(wandb_config=wandb.config))
+    if 'audicor_10s' in wandb.config.datasets:
+        dataloaders.append(AbnormalAudicor10sLoader(wandb_config=wandb.config))
 
-    g = BaseDataGenerator(dataloaders=[big_exam_loader, audicor_10s_loader], 
+    g = BaseDataGenerator(dataloaders=dataloaders,
                             wandb_config=wandb.config,
                             preprocessing_fn=preprocessing)
     train_set, valid_set, test_set = g.get()
