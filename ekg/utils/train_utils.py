@@ -1,13 +1,13 @@
 import tensorflow as tf
-from keras.backend.tensorflow_backend import set_session
+from tensorflow.compat.v1.keras.backend import set_session
 import os, configparser
 
 import wandb
 
 def allow_gpu_growth():
-    config = tf.ConfigProto()
+    config = tf.compat.v1.ConfigProto()
     config.gpu_options.allow_growth = True
-    set_session(tf.Session(config=config))
+    set_session(tf.compat.v1.Session(config=config))
 
 def set_wandb_config(params, overwrite=False, include_preprocessing_setting=False):
     if include_preprocessing_setting:
