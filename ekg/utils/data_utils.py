@@ -62,147 +62,23 @@ class DataAugmenter:
         return X
 
 class BaseDataGenerator:
-    def __init__(self, big_exam_dir, audicor_10s_dir,
-                    wandb_config, **kwargs):
+    def __init__(self, dataloaders, wandb_config, preprocessing_fn, **kwargs):
 
-        self.big_exam_dir = big_exam_dir
-        self.audicor_10s_dir = audicor_10s_dir
+        self.dataloaders = dataloaders
         self.config = wandb_config
-
-        self.big_exam_channel_set = self.calculate_channel_set(self.config.big_exam_ekg_channels,
-                                                                    self.config.big_exam_hs_channels)
-        self.audicor_10s_channel_set = self.calculate_channel_set(self.config.audicor_10s_ekg_channels,
-                                                                    self.config.audicor_10s_hs_channels)
-        
-        self.big_exam_n_repeat = len(self.big_exam_channel_set)
-        self.audicor_10s_n_repeat = len(self.audicor_10s_channel_set)
-
-        self.big_exam_n_instances = 0
-        self.audicor_10s_n_instances = 0
+        self.preprocessing_per_dataloader = preprocessing_fn
 
         # set additional variables
         self.__dict__.update(kwargs)
-
-        # X shape: (n_instances, n_samples, n_channels)
-        self.abnormal_X = self.get_abnormal_X() # abnormal first
-        self.normal_X = self.get_normal_X()
-
-        # subject_id shape: (n_instances)
-        self.abnormal_subject_id = self.get_abnormal_subject_id() # abnormal first
-        self.normal_subject_id = self.get_normal_subject_id()
-
-        # y shape: (n_instances, ...)
-        self.abnormal_y = self.get_abnormal_y() # abnormal first
-        self.normal_y = self.get_normal_y()
 
         self.means_and_stds = None # [means, stds], the shapes of means and stds are both [n_channels].
 
         self.preprocessing()
 
-    def calculate_channel_set(self, ekg_channels, hs_channels):
-        def to_list(x):
-            return [list(xi) for xi in x]
-        def flatten(x):
-            return [xi[0] + xi[1] for xi in x]
-        all_ekg_channel_set = to_list(itertools.combinations(ekg_channels, self.config.n_ekg_channels))
-        all_hs_channel_set = to_list(itertools.combinations(hs_channels, self.config.n_hs_channels))
-
-        return flatten(to_list(itertools.product(all_ekg_channel_set, all_hs_channel_set)))
-
-    def load_X(self, filename):
-        '''
-        Outputs:
-            X: np.ndarray of shape [n_instances, n_samples, n_channels]
-        '''
-        X = np.zeros((0, self.config.n_ekg_channels+self.config.n_hs_channels, self.config.sampling_rate*10))
-        
-        if 'big_exam' in self.config.datasets:
-            big_exam_X = np.load(os.path.join(self.big_exam_dir, filename)) # (n_instances, n_channels, n_samples)
-            if self.config.sampling_rate != 1000:
-                big_exam_X = downsample(big_exam_X, 
-                                        1000 // self.config.sampling_rate,
-                                        self.config.downsample,
-                                        channels_last=False)
-            # select channels
-            for channel_set in self.big_exam_channel_set:
-                X = np.append(X, big_exam_X[:, channel_set, :], axis=0)
-
-            self.big_exam_n_instances = big_exam_X.shape[0] * len(self.big_exam_channel_set)
-
-        if 'audicor_10s' in self.config.datasets:
-            audicor_10s_X = np.load(os.path.join(self.audicor_10s_dir, filename)) # (n_instances, n_channels, n_samples)
-
-            # select channels
-            for channel_set in self.audicor_10s_channel_set:
-                X = np.append(X, audicor_10s_X[:, channel_set, :], axis=0)
-
-            self.audicor_10s_n_instances = audicor_10s_X.shape[0] * len(self.audicor_10s_channel_set)
-
-        # make X channel last
-        return np.swapaxes(X, 1, 2)
-
-    def load_subject_id(self, is_normal):
-        # abnormal
-        subject_id = np.empty((0, ), dtype=str)
-        if 'big_exam' in self.config.datasets:
-            if is_normal: # assume normal data are all from different subjects
-                big_exam_subject_id = np.arange(self.big_exam_n_instances // self.big_exam_n_repeat, dtype=int)
-
-            else:
-                # read abnormal_event for suject id
-                df = pd.read_csv(os.path.join(self.big_exam_dir, 'abnormal_event.csv'))
-                big_exam_subject_id = df.subject_id.values
-
-            for _ in self.big_exam_channel_set:
-                subject_id = np.append(subject_id, big_exam_subject_id, axis=0)
-
-        if 'audicor_10s' in self.config.datasets:
-            if is_normal: # assume normal data are all from different subjects
-                audicor_10s_subject_id = np.load(os.path.join(self.audicor_10s_dir, 'normal_filenames.npy'))
-
-            else:
-                audicor_10s_subject_id = np.load(os.path.join(self.audicor_10s_dir, 'abnormal_filenames.npy'))
-                # get the filenames by spliting by '/'
-                audicor_10s_subject_id = np.vectorize(lambda fn: fn.split('/')[-1])(audicor_10s_subject_id)
-
-                # get the subject ids by spliting by '_'
-                audicor_10s_subject_id = np.vectorize(lambda fn: fn.split('_')[0])(audicor_10s_subject_id)
-
-            for _ in self.audicor_10s_channel_set:
-                subject_id = np.append(subject_id, audicor_10s_subject_id, axis=0)
-
-        return subject_id
-
-    def get_abnormal_X(self):
-        return self.load_X('abnormal_X.npy')
-    
-    def get_abnormal_y(self):
-        '''return abnormal_y
-
-        The shape must be (n_instances, ...)
-        '''
-        return NotImplementedError('get_abnormal_y not implemented!')
-
-    def get_abnormal_subject_id(self):
-        return self.load_subject_id(is_normal=False)
-
-    def get_normal_X(self):
-        return self.load_X('normal_X.npy')
-
-    def get_normal_y(self):
-        '''return normal_y
-
-        The shape must be (n_instances, ...)
-        '''
-        return NotImplementedError('get_normal_y not implemented!')
-
-    def get_normal_subject_id(self):
-        return self.load_subject_id(is_normal=True)
-
     def preprocessing(self):
-        '''Do whatever you want LOL.
-        '''
-        NotImplementedError('preprocessing not implemented!')
+        for dataloader in self.dataloaders:
+            self.preprocessing_per_dataloader(dataloader)
+        return
 
     @staticmethod
     def normalize(X, means_and_stds=None):
@@ -228,16 +104,17 @@ class BaseDataGenerator:
         def combine(set1, set2):
             return [np.append(set1[i], set2[i], axis=0) for i in range(2)]
 
-        # do abnormal split by abnormal subject ID
-        abnormal_training_set, abnormal_valid_set, abnormal_test_set  = subject_split(self.abnormal_X, self.abnormal_y, self.abnormal_subject_id, rs)
+        train_set, valid_set, test_set = None, None, None
+        for dataloader in self.dataloaders:
+            tmp_train_set, tmp_valid_set, tmp_test_set = dataloader.get_split(rs)
 
-        # do normal split by normal subject ID
-        normal_training_set, normal_valid_set, normal_test_set = subject_split(self.normal_X, self.normal_y, self.normal_subject_id, rs)
-
-        # combine
-        train_set = combine(normal_training_set, abnormal_training_set)
-        valid_set = combine(normal_valid_set, abnormal_valid_set)
-        test_set = combine(normal_test_set, abnormal_test_set)
+            # combine them
+            if train_set is None:
+                train_set, valid_set, test_set = tmp_train_set, tmp_valid_set, tmp_test_set
+            else:
+                train_set = combine(train_set, tmp_train_set)
+                valid_set = combine(valid_set, tmp_valid_set)
+                test_set = combine(test_set, tmp_test_set)
 
         return [train_set, valid_set, test_set]
 
@@ -265,6 +142,28 @@ def to_spectrogram(data):
             rtn.append([Sxx for f, t, Sxx in result])
 
     return np.array(rtn)
+
+def calculate_channel_set(n_ekg_channels, n_hs_channels, ekg_channels, hs_channels):
+    '''Return the all combinations of ekg + hs channels selections.
+    Args:
+        n_ekg_channels: number of the ekg channels should be selected.
+        n_hs_channels: number of the hs channels should be selected.
+        ekg_channels: a list of indices of ekg channels should be choosen from.
+        hs_channels: a list of indices of hs channels should be choosen from.
+
+    Outpus:
+        A list of lists that contain all the combinations of ekg + hs channels.
+        (i.e. [[1, 8], [1, 9]] if ekg/hs channels are [1] and [8, 9])
+    '''
+
+    def to_list(x):
+        return [list(xi) for xi in x]
+    def flatten(x):
+        return [xi[0] + xi[1] for xi in x]
+    all_ekg_channel_set = to_list(itertools.combinations(ekg_channels, n_ekg_channels))
+    all_hs_channel_set = to_list(itertools.combinations(hs_channels, n_hs_channels))
+
+    return flatten(to_list(itertools.product(all_ekg_channel_set, all_hs_channel_set)))
 
 def patient_split(*args, **kwargs):
     import warnings

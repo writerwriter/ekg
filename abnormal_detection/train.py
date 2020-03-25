@@ -22,6 +22,7 @@ from ekg.callbacks import LogBest
 
 from ekg.utils import data_utils
 from ekg.utils.data_utils import BaseDataGenerator
+from ekg.utils.datasets import BigExamLoader, Audicor10sLoader
 import evaluation
 
 from ekg.models.backbone import backbone
@@ -55,9 +56,11 @@ set_wandb_config({
 
     'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
     'big_exam_hs_channels': [8, 9],
+    'big_exam_only_train': True,
 
     'audicor_10s_ekg_channels': [0],
     'audicor_10s_hs_channels': [1],
+    'audicor_10s_only_train': False,
 
     'downsample': 'direct', # average
 
@@ -69,25 +72,30 @@ set_wandb_config({
     'n_hs_channels': data_utils.calculate_n_hs_channels(wandb.config)
 }, include_preprocessing_setting=False)
 
-class DataGenerator(BaseDataGenerator):
-    def __init__(self, config=config, wandb_config=wandb.config):
-        super().__init__(big_exam_dir = config['Big_Exam']['output_dir'],
-                            audicor_10s_dir = config['Audicor_10s']['output_dir'],
-                            wandb_config = wandb_config)
+def preprocessing(dataloader):
+    # make ys one-hot
+    dataloader.normal_y = keras.utils.to_categorical(dataloader.normal_y, num_classes=2, dtype=np.int)
+    dataloader.abnormal_y = keras.utils.to_categorical(dataloader.abnormal_y, num_classes=2, dtype=np.int)
 
-    def get_abnormal_y(self):
+class AbnormalBigExamLoader(BigExamLoader):
+    def load_abnormal_y(self):
         return np.ones((self.abnormal_X.shape[0], ))
-
-    def get_normal_y(self):
+    def load_normal_y(self):
         return np.zeros((self.normal_X.shape[0], ))
 
-    def preprocessing(self):
-        # make ys one-hot
-        self.normal_y = keras.utils.to_categorical(self.normal_y, num_classes=2, dtype=np.int)
-        self.abnormal_y = keras.utils.to_categorical(self.abnormal_y, num_classes=2, dtype=np.int)
+class AbnormalAudicor10sLoader(Audicor10sLoader):
+    def load_abnormal_y(self):
+        return np.ones((self.abnormal_X.shape[0], ))
+    def load_normal_y(self):
+        return np.zeros((self.normal_X.shape[0], ))
 
 def train():
-    g = DataGenerator()
+    big_exam_loader = AbnormalBigExamLoader(wandb_config=wandb.config)
+    audicor_10s_loader = AbnormalAudicor10sLoader(wandb_config=wandb.config)
+
+    g = BaseDataGenerator(dataloaders=[big_exam_loader, audicor_10s_loader], 
+                            wandb_config=wandb.config,
+                            preprocessing_fn=preprocessing)
     train_set, valid_set, test_set = g.get()
 
     # save means and stds to wandb
