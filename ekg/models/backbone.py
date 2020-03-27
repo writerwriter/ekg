@@ -8,8 +8,8 @@ from ..layers import LeftCropLike, CenterCropLike
 from ..layers.sincnet import SincConv1D
 from ..layers.non_local import non_local_block
 
-def _ekg_branch(input, nlayers, kernel_length, kernel_initializer, skip_connection):
-    ekg = input
+def _ekg_branch(input_data, nlayers, kernel_length, kernel_initializer, skip_connection):
+    ekg = input_data
     for i in range(nlayers):
         shortcut = ekg
         ekg = Conv1D(8, kernel_length, activation='relu', padding='same',
@@ -23,10 +23,10 @@ def _ekg_branch(input, nlayers, kernel_length, kernel_initializer, skip_connecti
 
     return ekg
 
-def _heart_sound_branch(input, sincconv_filter_length, sincconv_nfilters, nlayers, kernel_length, kernel_initializer, skip_connection, name_prefix=''):
-    hs = input
+def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, sampling_rate, nlayers, kernel_length, kernel_initializer, skip_connection, name_prefix=''):
+    hs = input_data
     sincconv_filter_length = sincconv_filter_length - (sincconv_filter_length+1) % 2
-    hs = SincConv1D(sincconv_nfilters, sincconv_filter_length, 1000, name='{}sincconv'.format(name_prefix))(hs)
+    hs = SincConv1D(sincconv_nfilters, sincconv_filter_length, sampling_rate, name='{}sincconv'.format(name_prefix))(hs)
     hs = BatchNormalization(name='{}bn_0'.format(name_prefix))(hs)
 
     for i in range(nlayers):
@@ -64,7 +64,9 @@ def backbone(config, include_top=False, classification=True, classes=2):
                                     arguments={'i': i}, 
                                     name='hs_split_{}'.format(i))(heart_sound_input)
             hs_outputs.append(_heart_sound_branch(hs, config.sincconv_filter_length,
-                                                        config.sincconv_nfilters, config.branch_nlayers,
+                                                        config.sincconv_nfilters, 
+                                                        config.sampling_rate,
+                                                        config.branch_nlayers,
                                                         config.hs_kernel_length, config.kernel_initializer,
                                                         config.skip_connection, name_prefix='hs_branch_{}_'.format(i)))
         if config.n_hs_channels >= 2:

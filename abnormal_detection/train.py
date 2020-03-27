@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import pickle
 import numpy as np
-import configparser
 import better_exceptions; better_exceptions.hook()
 
 import os, sys
@@ -27,10 +26,6 @@ import evaluation
 
 from ekg.models.backbone import backbone
 
-# read config
-config = configparser.ConfigParser()
-config.read('./config.cfg')
-
 # search result
 set_wandb_config({
     # model
@@ -54,11 +49,11 @@ set_wandb_config({
     'remove_dirty': 2, # deprecated, always remove dirty data
     'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
 
-    'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
+    'big_exam_ekg_channels': [], # [0, 1, 2, 3, 4, 5, 6, 7],
     'big_exam_hs_channels': [8, 9],
     'big_exam_only_train': True,
 
-    'audicor_10s_ekg_channels': [0],
+    'audicor_10s_ekg_channels': [],
     'audicor_10s_hs_channels': [1],
     'audicor_10s_only_train': False,
 

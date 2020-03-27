@@ -3,8 +3,9 @@ import pickle
 import better_exceptions; better_exceptions.hook()
 
 import numpy as np
+import pandas as pd
 import os, sys
-sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 from ekg.utils.train_utils import allow_gpu_growth; allow_gpu_growth()
 from ekg.utils.train_utils import set_wandb_config
@@ -18,12 +19,15 @@ from keras.optimizers import Adam
 from keras_radam import RAdam
 from keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
-from data_generator import DataGenerator
-from eval import evaluation
+from ekg.utils import data_utils
+from ekg.utils.data_utils import BaseDataGenerator
+from ekg.utils.datasets import BigExamLoader, Audicor10sLoader
 from ekg.callbacks import LogBest, ConcordanceIndex
 
 from ekg.models.backbone import backbone
 from ekg.losses import negative_hazard_log_likelihood
+
+from evaluation import evaluation
 
 from sklearn.utils import shuffle
 import keras
@@ -46,14 +50,114 @@ set_wandb_config({
     'skip_connection': False,
     'crop_center': True,
 
-    'remove_dirty': 2,
     'radam': True,
-})
+
+    # data
+    'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD'
+
+    'remove_dirty': 2, # deprecated, always remove dirty data
+    'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
+
+    'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
+    'big_exam_hs_channels': [8, 9],
+    'big_exam_only_train': True,
+
+    'audicor_10s_ekg_channels': [0],
+    'audicor_10s_hs_channels': [1],
+    'audicor_10s_only_train': False,
+
+    'downsample': 'direct', # average
+
+}, include_preprocessing_setting=True)
+
+set_wandb_config({
+    'sampling_rate': 500 if 'audicor_10s' in wandb.config.datasets else 1000,
+    'n_ekg_channels': data_utils.calculate_n_ekg_channels(wandb.config),
+    'n_hs_channels': data_utils.calculate_n_hs_channels(wandb.config)
+}, include_preprocessing_setting=False)
 
 def to_cs_st(y):
     cs = y[:, :, 0]
     st = y[:, :, 1]
     return st * (-1 * (cs == 0) + 1 * (cs == 1))
+
+def preprocessing(dataloader):
+    '''Remove incomplete data
+    '''
+    remove_mask = np.zeros((dataloader.abnormal_y.shape[0], ), dtype=bool) # all False
+
+    for i, event_name in enumerate(wandb.config.events):
+        remove_mask = np.logical_or(remove_mask, dataloader.abnormal_y[:, i, 0] == -1)
+
+    keep_mask = ~remove_mask
+    dataloader.abnormal_X = dataloader.abnormal_X[keep_mask]
+    dataloader.abnormal_y = dataloader.abnormal_y[keep_mask]
+    dataloader.abnormal_subject_id = dataloader.abnormal_subject_id[keep_mask]
+
+class HazardBigExamLoader(BigExamLoader):
+    def load_abnormal_y(self):
+        '''
+        Output:
+            np.ndarray of shape [n_instances, n_events, 2], where:
+                [n_instances, n_events, 0] = cs
+                [n_instances, n_events, 1] = st
+        '''
+        y = np.zeros((self.abnormal_X.shape[0] // len(self.channel_set), len(wandb.config.events), 2))
+
+        df = pd.read_csv(os.path.join(self.datadir, 'abnormal_event.csv'))
+        for i, event_name in enumerate(wandb.config.events):
+            y[:, i, 0] = df['{}_censoring_status'.format(event_name)].values
+            y[:, i, 1] = df['{}_survival_time'.format(event_name)].values
+
+        return np.tile(y, [len(self.channel_set), 1, 1])
+
+
+
+class HazardAudicor10sLoader(Audicor10sLoader):
+    def load_abnormal_y(self):
+        '''
+        Output:
+            np.ndarray of shape [n_instances, n_events, 2], where:
+                [n_instances, n_events, 0] = cs
+                [n_instances, n_events, 1] = st
+        '''
+        y = np.zeros((self.abnormal_X.shape[0] // len(self.channel_set), len(wandb.config.events), 2))
+
+        df = pd.read_csv(os.path.join(self.datadir, 'abnormal_event.csv'))
+        df.filename = df.filename.str.lower()
+
+        # load filenames of abnormal data
+        filenames = np.load(os.path.join(self.datadir, 'abnormal_filenames.npy'))
+        filenames = np.vectorize(lambda fn: fn.split('/')[-1].lower())(filenames)
+        filename_df = pd.DataFrame(filenames, columns=['filename'])
+
+        # use the filename to get cs and st
+        for i, event_name in enumerate(wandb.config.events):
+            merged_df = pd.merge(filename_df, 
+                                    df[['filename', '{}_censoring_status'.format(event_name), '{}_survival_time'.format(event_name)]],
+                                    left_on='filename', right_on='filename',
+                                    how='left')
+            merged_df = merged_df.replace(np.nan, -1) # replace nan with -1
+            y[:, i, 0] = merged_df['{}_censoring_status'.format(event_name)]
+            y[:, i, 1] = merged_df['{}_survival_time'.format(event_name)]
+
+        return np.tile(y, [len(self.channel_set), 1, 1])
+
+def load_normal_y(self):
+    '''
+    Output:
+        np.ndarray of shape [n_instances, n_events, 2], where:
+            [n_instances, n_events, 0] = cs, 0 survived
+            [n_instances, n_events, 1] = st, maximum value of that events
+    '''
+    y = np.zeros((self.normal_X.shape[0], len(wandb.config.events), 2))
+    y[:, :, 0] = 0 # survived
+    y[:, :, 1] = self.abnormal_y[:, :, 1].max()
+    
+    return y
+
+HazardBigExamLoader.load_normal_y = load_normal_y
+HazardAudicor10sLoader.load_normal_y = load_normal_y
 
 class LossChecker(keras.callbacks.Callback):
     def __init__(self, train_set, valid_set):
@@ -93,26 +197,36 @@ class LossChecker(keras.callbacks.Callback):
         print('validation loss:', self.loss(to_cs_st(self.valid_set[1]), valid_pred))
 
 def train():
-    event_names = ['ADHF', 'MI', 'Stroke', 'CVD', 'Mortality']
-    g = DataGenerator(remove_dirty=wandb.config.remove_dirty, event_names=event_names)
+    dataloaders = list()
+    if 'big_exam' in wandb.config.datasets:
+        dataloaders.append(HazardBigExamLoader(wandb_config=wandb.config))
+    if 'audicor_10s' in wandb.config.datasets:
+        dataloaders.append(HazardAudicor10sLoader(wandb_config=wandb.config))
+
+    g = BaseDataGenerator(dataloaders=dataloaders,
+                            wandb_config=wandb.config,
+                            preprocessing_fn=preprocessing)
+
     train_set, valid_set, test_set = g.get()
 
     # save means and stds to wandb
     with open(os.path.join(wandb.run.dir, 'means_and_stds.pl'), 'wb') as f:
         pickle.dump(g.means_and_stds, f)
 
-    model = backbone(wandb.config, include_top=True, classification=False, classes=len(event_names))
+    model = backbone(wandb.config, include_top=True, classification=False, classes=len(wandb.config.events))
     model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), loss=negative_hazard_log_likelihood)
     model.summary()
     wandb.log({'model_params': model.count_params()}, commit=False)
 
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=20),
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         LossChecker(train_set, valid_set),
-        ConcordanceIndex(train_set, valid_set, event_names),
-        LogBest(records=['val_loss', 'loss'] + list(map(lambda x: '{}_cindex'.format(x),event_names)) + list(map(lambda x: 'val_{}_cindex'.format(x), event_names))),
+        ConcordanceIndex(train_set, valid_set, wandb.config.events),
+        LogBest(records=['val_loss', 'loss'] + 
+                    ['{}_cindex'.format(event_name) for event_name in wandb.config.events] +
+                    ['val_{}_cindex'.format(event_name) for event_name in wandb.config.events]),
         WandbCallback(log_gradients=False, training_data=train_set),
+        EarlyStopping(monitor='val_loss', patience=50), # must be placed last otherwise it won't work
     ]
 
     train_set = shuffle(train_set[0], train_set[1])
@@ -121,7 +235,24 @@ def train():
                 validation_data=(valid_set[0], to_cs_st(valid_set[1])),
                 callbacks=callbacks, shuffle=True)
     model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
-    evaluation(model, test_set, event_names)
+
+    # load best model from wandb and evaluate
+    print('Evaluate the BEST model!')
+
+    from keras.models import load_model
+    from ekg.layers import LeftCropLike, CenterCropLike
+    from ekg.layers.sincnet import SincConv1D
+
+    custom_objects = {
+        'SincConv1D': SincConv1D,
+        'LeftCropLike': LeftCropLike, 
+        'CenterCropLike': CenterCropLike
+    }
+
+    model = load_model(os.path.join(wandb.run.dir, 'model-best.h5'),
+                        custom_objects=custom_objects, compile=False)
+
+    evaluation(model, test_set, wandb.config.events)
 
 if __name__ == '__main__':
     train()

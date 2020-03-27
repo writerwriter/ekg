@@ -41,8 +41,15 @@ class ConcordanceIndex(keras.callbacks.Callback):
             cs_train, st_train = self.train_set[1][:, i, 0], self.train_set[1][:, i, 1]
             cs_valid, st_valid = self.valid_set[1][:, i, 0], self.valid_set[1][:, i, 1]
 
-            train_cindex = concordance_index(st_train, -pred_train[:, i], cs_train)
-            valid_cindex = concordance_index(st_valid, -pred_valid[:, i], cs_valid)
+            try:
+                train_cindex = concordance_index(st_train, -pred_train[:, i], cs_train)
+            except ZeroDivisionError:
+                train_cindex = np.nan
+            
+            try:
+                valid_cindex = concordance_index(st_valid, -pred_valid[:, i], cs_valid)
+            except ZeroDivisionError:
+                valid_cindex = np.nan
 
             print('Concordance index of {} training set: {:.4f}'.format(self.event_names[i], train_cindex))
             print('Concordance index of {} validation set: {:.4f}'.format(self.event_names[i], valid_cindex))

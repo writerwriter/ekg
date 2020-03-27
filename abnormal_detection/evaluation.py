@@ -35,6 +35,7 @@ def evaluation(models, test_set):
     print_cm(sklearn.metrics.confusion_matrix(y_true, y_pred), ['normal', 'patient'])
 
 if __name__ == '__main__':
+    # NOTE: THIS IS NOT WORKING RIGHT NOW.
     from train import DataGenerator
     import configparser
     from ekg.utils.eval_utils import YamlParser

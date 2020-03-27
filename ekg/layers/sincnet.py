@@ -170,7 +170,7 @@ def sinc(band, t_right):
     y_right = K.sin(2 * math.pi * band * t_right) / (2 * math.pi * band * t_right)
     #y_left = flip(y_right, 0) TODO remove if useless
     y_left = K.reverse(y_right, 0)
-    y = K.concatenate([y_left, K.variable(K.ones(1)), y_right])
+    y = K.concatenate([y_left, K.ones(1), y_right])
     return y
 
 if __name__ == '__main__':

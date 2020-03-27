@@ -145,6 +145,9 @@ class Audicor10sLoader(DatasetLoader):
             subject_id = np.vectorize(lambda fn: fn.split('/')[-1])(subject_id)
 
             # get the subject ids by spliting by '_'
-            subject_id = np.vectorize(lambda fn: fn.split('_')[0])(subject_id)
+            subject_id = np.vectorize(lambda fn: 
+                        fn.split('_')[0] if not fn.startswith('MMH') else
+                        fn.split('_')[0] + fn.split('_')[1] # fix MMH
+            )(subject_id)
 
         return np.tile(subject_id, len(self.channel_set))
