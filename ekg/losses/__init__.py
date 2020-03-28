@@ -1,42 +1,46 @@
 import tensorflow as tf
 import keras.backend as K
 
-def negative_hazard_log_likelihood(cs_st, pred_risk):
-    '''
-        cs_st: st * ( -1 * (cs == 0) + 1 * (cs == 1) ) # (?, n_events)
-        pred_risk: (?, n_events)
-    '''
-    def event_nhll(cs_st_risk):
-        event_cs = cs_st_risk[0] # (?)
-        event_st = cs_st_risk[1] # (?)
-        event_risk = cs_st_risk[2] # (?)
 
-        # sort cs by st
-        sorting_indices = tf.argsort(event_st)[::-1]
-        sorted_event_cs = tf.gather(event_cs, sorting_indices) # (?)
-        sorted_event_risk = tf.gather(event_risk, sorting_indices) # (?)
+def negative_hazard_log_likelihood(event_weights):
+    def loss(cs_st, pred_risk):
+        '''
+            cs_st: st * ( -1 * (cs == 0) + 1 * (cs == 1) ) # (?, n_events)
+            pred_risk: (?, n_events)
+        '''
+        def event_nhll(cs_st_risk):
+            event_cs = cs_st_risk[0] # (?)
+            event_st = cs_st_risk[1] # (?)
+            event_risk = cs_st_risk[2] # (?)
 
-        hazard_ratio = K.exp(sorted_event_risk)
-        log_risk = K.log(K.cumsum(hazard_ratio))
-        uncensored_likelihood = sorted_event_risk - log_risk
-        censored_likelihood = uncensored_likelihood * sorted_event_cs
-        neg_likelihood = -K.sum(censored_likelihood)
+            # sort cs by st
+            sorting_indices = tf.argsort(event_st)[::-1]
+            sorted_event_cs = tf.gather(event_cs, sorting_indices) # (?)
+            sorted_event_risk = tf.gather(event_risk, sorting_indices) # (?)
 
-        return neg_likelihood
+            hazard_ratio = K.exp(sorted_event_risk)
+            log_risk = K.log(K.cumsum(hazard_ratio))
+            uncensored_likelihood = sorted_event_risk - log_risk
+            censored_likelihood = uncensored_likelihood * sorted_event_cs
+            neg_likelihood = -K.sum(censored_likelihood)
 
-    cs = K.cast(K.greater(cs_st, 0), K.floatx()) # (?, n_events)
-    st = K.abs(cs_st) # (?, n_events)
+            return neg_likelihood
 
-    # (?, n_events) -> (n_events, ?)
-    cs = tf.transpose(cs)
-    st = tf.transpose(st)
-    pred_risk = tf.transpose(pred_risk)
+        cs = K.cast(K.greater(cs_st, 0), K.floatx()) # (?, n_events)
+        st = K.abs(cs_st) # (?, n_events)
 
-    nhlls = tf.map_fn(event_nhll,
-                        (cs, st, pred_risk),
-                        dtype=tf.float32)
+        # (?, n_events) -> (n_events, ?)
+        cs = tf.transpose(cs)
+        st = tf.transpose(st)
+        pred_risk = tf.transpose(pred_risk)
 
-    return K.mean(nhlls)
+        nhlls = tf.map_fn(event_nhll,
+                            (cs, st, pred_risk),
+                            dtype=tf.float32)
+
+        nhlls = nhlls * event_weights
+        return K.mean(nhlls)
+    return loss
 
 def cindex_loss(y, risk):
     cs, st = tf.cast(y[:, 0:1], tf.float32), tf.cast(y[:, 1:2], tf.float32)

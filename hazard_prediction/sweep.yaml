@@ -1,15 +1,15 @@
 description: hyperparameter search for hazard prediction
 
 # Training script to run
-program: train.py
+program: ./hazard_prediction/train.py
 
 # Method can be bayes, random, grid
 method: bayes
 
 # Metric to optimize
 metric:
-  name: val_loss
-  goal: minimize
+  name: best_val_ADHF_cindex
+  goal: maximize
 
 # Should we early terminate runs
 early_terminate:
@@ -29,16 +29,12 @@ parameters:
       values: [3, 5, 6]
   final_kernel_length:
       values: [5, 7, 13, 21, 35]
-  final_nonlocal_nlayers:
-      values: [0, 1, 2]
 
   kernel_initializer:
       values: ['glorot_uniform', 'he_normal']
 
   skip_connection:
-      values: [False]
+      values: [True, False]
   crop_center:
       values: [True]
 
-  remove_dirty:
-      values: [2]

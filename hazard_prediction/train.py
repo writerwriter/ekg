@@ -54,6 +54,7 @@ set_wandb_config({
 
     # data
     'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD'
+    'event_weights': [1, 0.5],
 
     'remove_dirty': 2, # deprecated, always remove dirty data
     'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
@@ -110,7 +111,6 @@ class HazardBigExamLoader(BigExamLoader):
             y[:, i, 1] = df['{}_survival_time'.format(event_name)].values
 
         return np.tile(y, [len(self.channel_set), 1, 1])
-
 
 
 class HazardAudicor10sLoader(Audicor10sLoader):
@@ -214,7 +214,7 @@ def train():
         pickle.dump(g.means_and_stds, f)
 
     model = backbone(wandb.config, include_top=True, classification=False, classes=len(wandb.config.events))
-    model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), loss=negative_hazard_log_likelihood)
+    model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), loss=negative_hazard_log_likelihood(wandb.config.event_weights))
     model.summary()
     wandb.log({'model_params': model.count_params()}, commit=False)
 
@@ -252,6 +252,10 @@ def train():
     model = load_model(os.path.join(wandb.run.dir, 'model-best.h5'),
                         custom_objects=custom_objects, compile=False)
 
+    print('Training set:')
+    evaluation(model, train_set, wandb.config.events)
+
+    print('Testing set:')
     evaluation(model, test_set, wandb.config.events)
 
 if __name__ == '__main__':
