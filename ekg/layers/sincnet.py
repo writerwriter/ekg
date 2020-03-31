@@ -1,11 +1,15 @@
+'''The original author of this sincnet keras port is grausof.
+
+Check out the project on github - https://github.com/grausof/keras-sincnet
+'''
 from keras import backend as K
 from keras.engine.topology import Layer
 from keras.utils import conv_utils
 import numpy as np
 import math
-
-debug = False
 from keras import initializers
+
+
 class LayerNorm(Layer):
     """ Layer Normalization in the style of https://arxiv.org/abs/1607.06450 """
     def __init__(self, scale_initializer='ones', bias_initializer='zeros', **kwargs):
@@ -33,13 +37,6 @@ class LayerNorm(Layer):
 
     def compute_output_shape(self, input_shape):
         return input_shape
-
-
-
-
-def debug_print(*objects):
-    if debug:
-        print(*objects)
 
 
 class SincConv1D(Layer):
@@ -99,8 +96,6 @@ class SincConv1D(Layer):
 
 
     def call(self, x):
-
-        debug_print("call")
         #filters = K.zeros(shape=(N_filt, Filt_dim))
 
         # Get beginning and end frequencies of the filters.
@@ -114,12 +109,10 @@ class SincConv1D(Layer):
         window = 0.54 - 0.46 * K.cos(2 * math.pi * n / self.Filt_dim)
         window = K.cast(window, "float32")
         window = K.variable(window)
-        debug_print("  window", window)
 
         # TODO what is this?
         t_right_linspace = np.linspace(1, (self.Filt_dim - 1) / 2, int((self.Filt_dim -1) / 2))
         t_right = K.variable(t_right_linspace / self.fs)
-        debug_print("  t_right", t_right)
 
         # Compute the filters.
         output_list = []
@@ -145,14 +138,10 @@ class SincConv1D(Layer):
 
 
         # Do the convolution.
-        debug_print("call")
-        debug_print("  x", x)
-        debug_print("  filters", filters)
         out = K.conv1d(
             x,
             kernel=filters
         )
-        debug_print("  out", out)
 
         return out
 
