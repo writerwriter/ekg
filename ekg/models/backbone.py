@@ -1,7 +1,7 @@
-import keras.backend as K
-from keras.models import Model
-from keras.layers import Input, Lambda, BatchNormalization, GlobalAveragePooling1D
-from keras.layers import Conv1D, MaxPooling1D, Dense, Add, Concatenate
+import tensorflow.keras.backend as K
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Lambda, BatchNormalization, GlobalAveragePooling1D
+from tensorflow.keras.layers import Conv1D, MaxPooling1D, Dense, Add, Concatenate
 # from keras.layers import Maximum
 
 from ..layers import LeftCropLike, CenterCropLike

@@ -2,42 +2,37 @@
 
 Check out the project on github - https://github.com/grausof/keras-sincnet
 '''
-from keras import backend as K
-from keras.engine.topology import Layer
-from keras.utils import conv_utils
+from tensorflow.keras import backend as K
+from tensorflow.keras.layers import Layer
+
 import numpy as np
 import math
-from keras import initializers
 
-
-class LayerNorm(Layer):
-    """ Layer Normalization in the style of https://arxiv.org/abs/1607.06450 """
-    def __init__(self, scale_initializer='ones', bias_initializer='zeros', **kwargs):
-        super(LayerNorm, self).__init__(**kwargs)
-        self.epsilon = 1e-6
-        self.scale_initializer = initializers.get(scale_initializer)
-        self.bias_initializer = initializers.get(bias_initializer)
-
-    def build(self, input_shape):
-        self.scale = self.add_weight(shape=(input_shape[-1],),
-                                     initializer=self.scale_initializer,
-                                     trainable=True,
-                                     name='{}_scale'.format(self.name))
-        self.bias = self.add_weight(shape=(input_shape[-1],),
-                                    initializer=self.bias_initializer,
-                                    trainable=True,
-                                    name='{}_bias'.format(self.name))
-        self.built = True
-
-    def call(self, x, mask=None):
-        mean = K.mean(x, axis=-1, keepdims=True)
-        std = K.std(x, axis=-1, keepdims=True)
-        norm = (x - mean) * (1/(std + self.epsilon))
-        return norm * self.scale + self.bias
-
-    def compute_output_shape(self, input_shape):
-        return input_shape
-
+def conv_output_length(input_length, filter_size,
+                       padding, stride, dilation=1):
+    """Determines output length of a convolution given input length.
+    # Arguments
+        input_length: integer.
+        filter_size: integer.
+        padding: one of `"same"`, `"valid"`, `"full"`.
+        stride: integer.
+        dilation: dilation rate, integer.
+    # Returns
+        The output length (integer).
+    """
+    if input_length is None:
+        return None
+    assert padding in {'same', 'valid', 'full', 'causal'}
+    dilated_filter_size = (filter_size - 1) * dilation + 1
+    if padding == 'same':
+        output_length = input_length
+    elif padding == 'valid':
+        output_length = input_length - dilated_filter_size + 1
+    elif padding == 'causal':
+        output_length = input_length
+    elif padding == 'full':
+        output_length = input_length + dilated_filter_size - 1
+    return (output_length + stride - 1) // stride
 
 class SincConv1D(Layer):
 
@@ -54,7 +49,6 @@ class SincConv1D(Layer):
 
         super(SincConv1D, self).__init__(**kwargs)
 
-
     def get_config(self):
         config = {
             'N_filt': self.N_filt,
@@ -66,20 +60,7 @@ class SincConv1D(Layer):
         config.update(base_config)
         return config
 
-    def build(self, input_shape):
-
-        # The filters are trainable parameters.
-        self.filt_b1 = self.add_weight(
-            name='filt_b1',
-            shape=(self.N_filt,),
-            initializer='uniform',
-            trainable=True)
-        self.filt_band = self.add_weight(
-            name='filt_band',
-            shape=(self.N_filt,),
-            initializer='uniform',
-            trainable=True)
-
+    def calculate_initial_weights(self):
         # Mel Initialization of the filterbanks
         low_freq_mel = 80
         high_freq_mel = (2595 * np.log10(1 + (self.fs / 2) / 700))  # Convert Hz to Mel
@@ -90,12 +71,9 @@ class SincConv1D(Layer):
         b1[0] = 30
         b2[-1] = (self.fs / 2) - 100
         self.freq_scale=self.fs * 1.0
-        self.set_weights([b1/self.freq_scale, (b2-b1)/self.freq_scale])
+        return b1/self.freq_scale, (b2-b1)/self.freq_scale
 
-        super(SincConv1D, self).build(input_shape)  # Be sure to call this at the end
-
-
-    def call(self, x):
+    def generate_filters(self):
         #filters = K.zeros(shape=(N_filt, Filt_dim))
 
         # Get beginning and end frequencies of the filters.
@@ -108,7 +86,7 @@ class SincConv1D(Layer):
         n = np.linspace(0, self.Filt_dim, self.Filt_dim)
         window = 0.54 - 0.46 * K.cos(2 * math.pi * n / self.Filt_dim)
         window = K.cast(window, "float32")
-        window = K.variable(window)
+        # window = K.variable(window)
 
         # TODO what is this?
         t_right_linspace = np.linspace(1, (self.Filt_dim - 1) / 2, int((self.Filt_dim -1) / 2))
@@ -125,6 +103,32 @@ class SincConv1D(Layer):
         filters = K.stack(output_list) #(80, 251)
         filters = K.transpose(filters) #(251, 80)
         filters = K.reshape(filters, (self.Filt_dim, 1,self.N_filt))   #(251,1,80) in TF: (filter_width, in_channels, out_channels) in PyTorch (out_channels, in_channels, filter_width)
+        return filters
+
+    def build(self, input_shape):
+
+        self.filt_b1_init, self.filt_band_init = self.calculate_initial_weights()
+
+        filt_b1_initializer = lambda shape, dtype=None: self.filt_b1_init
+        filt_band_initializer = lambda shape, dtype=None: self.filt_band_init
+
+        # The filters are trainable parameters.
+        self.filt_b1 = self.add_weight(
+            name='filt_b1',
+            shape=(self.N_filt,),
+            initializer=filt_b1_initializer,
+            trainable=True)
+        self.filt_band = self.add_weight(
+            name='filt_band',
+            shape=(self.N_filt,),
+            initializer=filt_band_initializer,
+            trainable=True)
+
+        self.filters = self.generate_filters()
+
+        super(SincConv1D, self).build(input_shape)  # Be sure to call this at the end
+
+    def call(self, x):
 
         '''
         Given an input tensor of shape [batch, in_width, in_channels] if data_format is "NWC",
@@ -136,24 +140,22 @@ class SincConv1D(Layer):
         (where out_width is a function of the stride and padding as in conv2d) and returned to the caller.
         '''
 
-
         # Do the convolution.
         out = K.conv1d(
             x,
-            kernel=filters
+            kernel=self.filters
         )
 
         return out
 
     def compute_output_shape(self, input_shape):
-        new_size = conv_utils.conv_output_length(
+        new_size = conv_output_length(
             input_shape[1],
             self.Filt_dim,
             padding="valid",
             stride=1,
             dilation=1)
         return (input_shape[0],) + (new_size,) + (self.N_filt,)
-
 
 def sinc(band, t_right):
     y_right = K.sin(2 * math.pi * band * t_right) / (2 * math.pi * band * t_right)

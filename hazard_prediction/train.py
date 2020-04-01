@@ -15,9 +15,9 @@ import wandb
 from wandb.keras import WandbCallback
 wandb.init(project='ekg-hazard_prediction', entity='toosyou')
 
-from keras.optimizers import Adam
+from tensorflow.keras.optimizers import Adam
 from keras_radam import RAdam
-from keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
 from ekg.utils import data_utils
 from ekg.utils.data_utils import BaseDataGenerator
@@ -30,7 +30,7 @@ from ekg.losses import negative_hazard_log_likelihood
 from evaluation import evaluation
 
 from sklearn.utils import shuffle
-import keras
+from tensorflow import keras
 
 # search result
 set_wandb_config({
@@ -193,6 +193,7 @@ class LossChecker(keras.callbacks.Callback):
         train_pred = self.model.predict(self.train_set[0])
         valid_pred = self.model.predict(self.valid_set[0])
 
+        print()
         print('training loss:', self.loss(to_cs_st(self.train_set[1]), train_pred))
         print('validation loss:', self.loss(to_cs_st(self.valid_set[1]), valid_pred))
 

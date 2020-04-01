@@ -1,6 +1,6 @@
 import wandb
 import numpy as np
-import keras
+from tensorflow import keras
 
 from lifelines.utils import concordance_index
 

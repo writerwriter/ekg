@@ -4,12 +4,11 @@ url = "https://pypi.org/simple"
 verify_ssl = true
 
 [dev-packages]
+pylint = "*"
 
 [packages]
-tensorflow = "*"
 better-exceptions = "*"
 wandb = "*"
-keras = "*"
 lifelines = "*"
 keras-rectified-adam = "*"
 scikit-learn = "*"
@@ -18,6 +17,11 @@ pillow = "*"
 tqdm = "*"
 pywavelets = "*"
 xlrd = "*"
+tf-nightly = "*"
+keras-radam = "*"
 
 [requires]
 python_version = "3.6"
+
+[pipenv]
+allow_prereleases = true
