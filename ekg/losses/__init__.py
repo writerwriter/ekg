@@ -1,6 +1,5 @@
 import tensorflow as tf
-import keras.backend as K
-
+import tensorflow.keras.backend as K
 
 def negative_hazard_log_likelihood(event_weights):
     def loss(cs_st, pred_risk):

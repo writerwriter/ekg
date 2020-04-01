@@ -1,7 +1,7 @@
-from keras.layers import Activation, Reshape, Lambda, dot, add
-from keras.layers import Conv1D, Conv2D, Conv3D
-from keras.layers import MaxPool1D
-from keras import backend as K
+from tensorflow.keras.layers import Activation, Reshape, Lambda, dot, add
+from tensorflow.keras.layers import Conv1D, Conv2D, Conv3D
+from tensorflow.keras.layers import MaxPool1D
+from tensorflow.keras import backend as K
 
 
 def non_local_block(ip, intermediate_dim=None, compression=2,

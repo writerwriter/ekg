@@ -5,6 +5,7 @@ verify_ssl = true
 
 [dev-packages]
 pylint = "*"
+jupyterlab = "*"
 
 [packages]
 better-exceptions = "*"
@@ -17,8 +18,8 @@ pillow = "*"
 tqdm = "*"
 pywavelets = "*"
 xlrd = "*"
-tf-nightly = "*"
 keras-radam = "*"
+tensorflow = "*"
 
 [requires]
 python_version = "3.6"

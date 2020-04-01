@@ -2,6 +2,7 @@
 
 Check out the project on github - https://github.com/grausof/keras-sincnet
 '''
+import tensorflow as tf
 from tensorflow.keras import backend as K
 from tensorflow.keras.layers import Layer
 
@@ -90,7 +91,8 @@ class SincConv1D(Layer):
 
         # TODO what is this?
         t_right_linspace = np.linspace(1, (self.Filt_dim - 1) / 2, int((self.Filt_dim -1) / 2))
-        t_right = K.variable(t_right_linspace / self.fs)
+        # t_right = K.variable(t_right_linspace / self.fs) # this line doesn't work in tf edge mode
+        t_right = t_right_linspace / self.fs
 
         # Compute the filters.
         output_list = []
@@ -125,7 +127,6 @@ class SincConv1D(Layer):
             trainable=True)
 
         self.filters = self.generate_filters()
-
         super(SincConv1D, self).build(input_shape)  # Be sure to call this at the end
 
     def call(self, x):
@@ -143,7 +144,7 @@ class SincConv1D(Layer):
         # Do the convolution.
         out = K.conv1d(
             x,
-            kernel=self.filters
+            kernel=self.generate_filters()
         )
 
         return out
@@ -157,17 +158,17 @@ class SincConv1D(Layer):
             dilation=1)
         return (input_shape[0],) + (new_size,) + (self.N_filt,)
 
+sinc_one = K.ones(1)
 def sinc(band, t_right):
     y_right = K.sin(2 * math.pi * band * t_right) / (2 * math.pi * band * t_right)
     #y_left = flip(y_right, 0) TODO remove if useless
     y_left = K.reverse(y_right, 0)
-    y = K.concatenate([y_left, K.ones(1), y_right])
+    y = K.concatenate([y_left, sinc_one, y_right]) # K.ones(1)
     return y
 
 if __name__ == '__main__':
-    import keras
+    from tensorflow import keras
 
     model = keras.models.Sequential([SincConv1D(64, 255, 1000, input_shape=(10000, 1))])
-    model.save('test_model.h5')
-
-    model = keras.models.load_model('test_model.h5', custom_objects={'SincConv1D': SincConv1D})
+    model.compile(loss='mse', optimizer='SGD')
+    model.fit(np.random.rand(10, 10000, 1), np.random.rand(10, 9746, 64), batch_size=10, epochs=10)

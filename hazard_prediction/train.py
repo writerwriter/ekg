@@ -32,6 +32,10 @@ from evaluation import evaluation
 from sklearn.utils import shuffle
 from tensorflow import keras
 
+from tensorflow.keras.models import load_model
+from ekg.layers import LeftCropLike, CenterCropLike
+from ekg.layers.sincnet import SincConv1D
+
 # search result
 set_wandb_config({
     'sincconv_filter_length': 31,
@@ -239,10 +243,6 @@ def train():
 
     # load best model from wandb and evaluate
     print('Evaluate the BEST model!')
-
-    from keras.models import load_model
-    from ekg.layers import LeftCropLike, CenterCropLike
-    from ekg.layers.sincnet import SincConv1D
 
     custom_objects = {
         'SincConv1D': SincConv1D,
