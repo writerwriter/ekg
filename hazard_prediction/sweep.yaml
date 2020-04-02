@@ -17,6 +17,12 @@ early_terminate:
 
 # Parameters to search over
 parameters:
+  sincconv_filter_length:
+      min: 16
+      max: 128
+  sincconv_nfilters:
+      values: [8, 16, 32]
+
   branch_nlayers:
       values: [1, 2, 3, 4, 5]
 

@@ -36,6 +36,8 @@ def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, s
         hs = BatchNormalization(name='{}bn_{}'.format(name_prefix, i+1))(hs)
 
         if skip_connection:
+            shortcut = Conv1D(8, 1, activation='relu', padding='same',
+                        kernel_initializer=kernel_initializer, name='{}skip_bottleneck_{}'.format(name_prefix, i+1))(shortcut)
             hs = Add(name='{}skip_merge_{}'.format(name_prefix, i+1))([hs, shortcut])
 
         hs = MaxPooling1D(3, padding='same', name='{}maxpool_{}'.format(name_prefix, i+1))(hs)

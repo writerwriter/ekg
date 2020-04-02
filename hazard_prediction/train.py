@@ -50,6 +50,7 @@ set_wandb_config({
     'final_kernel_length': 13,
     'final_nonlocal_nlayers': 0,
 
+    'batch_size': 128,
     'kernel_initializer': 'he_normal',
     'skip_connection': False,
     'crop_center': True,
@@ -72,6 +73,8 @@ set_wandb_config({
     'audicor_10s_only_train': False,
 
     'downsample': 'direct', # average
+
+    'tf': '2.2',
 
 }, include_preprocessing_setting=True)
 
@@ -236,7 +239,7 @@ def train():
 
     train_set = shuffle(train_set[0], train_set[1])
     valid_set = shuffle(valid_set[0], valid_set[1])
-    model.fit(train_set[0], to_cs_st(train_set[1]), batch_size=64, epochs=500,
+    model.fit(train_set[0], to_cs_st(train_set[1]), batch_size=wandb.config.batch_size, epochs=500,
                 validation_data=(valid_set[0], to_cs_st(valid_set[1])),
                 callbacks=callbacks, shuffle=True)
     model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
