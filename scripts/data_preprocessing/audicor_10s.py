@@ -133,12 +133,46 @@ def generate_survival_data(old_label_filename, new_label_filename):
 
         return merged_df
 
-    def append_ADHF(merged_df, new_followup_df):
+    def append_ADHF_dates(merged_df, new_followup_df):
         def find_adhfs(row):
             adhfs = new_followup_df[new_followup_df['Subject ID'] == row.subject_id][['End_Point_ADHF_DT{:d}'.format(i) for i in range(1, 5)]].values.tolist()[0]
             adhfs = [date for date in adhfs if date == date]
             return adhfs
+        merged_df['ADHF_dates'] = merged_df.apply(find_adhfs, axis=1)
+        return merged_df
 
+    def append_event_dates(merged_df, new_followup_df, event_name, new_event_name):
+        def find_event(row):
+            return new_followup_df[new_followup_df['Subject ID'] == row.subject_id]['End_Point_{}_DT'.format(event_name)].values[0]
+        
+        merged_df['{}_date'.format(new_event_name)] = merged_df.apply(find_event, axis=1)
+        return merged_df
+
+    def fix_followup_date(merged_df, new_event_names):
+        def use_the_latest_date(row):
+            dates = list()
+            # get adhf dates
+            for date in merged_df[merged_df.subject_id == row.subject_id].iloc[0].ADHF_dates:
+                dates.append(datetime.strptime(date, '%m/%d/%Y')) # parse as a datetime object
+            
+            # get event dates
+            for en in new_event_names:
+                date = merged_df[merged_df.subject_id == row.subject_id].iloc[0]['{}_date'.format(en)]
+                if date == date: # not nan
+                    dates.append(datetime.strptime(date, '%m/%d/%Y')) # parse as a datetime object
+
+            # get measurement dates
+            for date in merged_df[merged_df.subject_id == row.subject_id].measurement_date:
+                dates.append(datetime.strptime(date, '%Y/%m/%d'))
+
+            # get follow_up_date
+            dates.append(datetime.strptime(row.follow_up_date, '%Y/%m/%d'))
+            return max(dates).strftime('%Y/%m/%d') # return the latest date
+
+        merged_df['follow_up_date'] = merged_df.apply(use_the_latest_date, axis=1)
+        return merged_df
+
+    def generate_ADHF_data(merged_df):
         def generate_survival_data(row):
             '''
                 cs: 1 - event occurred
@@ -158,15 +192,11 @@ def generate_survival_data(old_label_filename, new_label_filename):
             return pd.Series(( survival_time, 0))
 
         # generate ADHF dates
-        merged_df['ADHF_dates'] = merged_df.apply(find_adhfs, axis=1)
         merged_df[['ADHF_survival_time', 'ADHF_censoring_status']] = merged_df.apply(generate_survival_data, axis=1)
 
         return merged_df
 
-    def append_event(merged_df, new_followup_df, event_name, new_event_name):
-        def find_event(row):
-            return new_followup_df[new_followup_df['Subject ID'] == row.subject_id]['End_Point_{}_DT'.format(event_name)].values[0]
-            
+    def generate_event_data(merged_df, new_event_name):
         def generate_survival_data(row):
             '''
                 cs: 1 - event occurred
@@ -184,7 +214,6 @@ def generate_survival_data(old_label_filename, new_label_filename):
             else:
                 return pd.Series((full_survival_time, 0))
         
-        merged_df['{}_date'.format(new_event_name)] = merged_df.apply(find_event, axis=1)
         merged_df[['{}_survival_time'.format(new_event_name), '{}_censoring_status'.format(new_event_name)]] = merged_df.apply(generate_survival_data, axis=1)
         return merged_df
 
@@ -198,10 +227,19 @@ def generate_survival_data(old_label_filename, new_label_filename):
     merged_df = merge(old_df, new_df)
 
     merged_df = append_follow_up_date(merged_df, new_followup_df)
-    merged_df = append_ADHF(merged_df, new_followup_df)
-
+    # merged_df = append_ADHF(merged_df, new_followup_df)
+    # find all event dates
+    merged_df = append_ADHF_dates(merged_df, new_followup_df)
     for event_name, new_event_name in [['CV_death', 'CVD'], ['all_cause_death', 'Mortality']]:# , ['nonfetal_MI', 'MI']]:
-        merged_df = append_event(merged_df, new_followup_df, event_name, new_event_name)
+        merged_df = append_event_dates(merged_df, new_followup_df, event_name, new_event_name)
+
+    # fix follow up date
+    merged_df = fix_followup_date(merged_df, ['CVD', 'Mortality'])
+
+    # generate survival datas 
+    merged_df = generate_ADHF_data(merged_df)
+    for en in ['CVD', 'Mortality']:
+        merged_df = generate_event_data(merged_df, en)
 
     return merged_df
 

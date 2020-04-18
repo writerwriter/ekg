@@ -20,6 +20,7 @@ pywavelets = "*"
 xlrd = "*"
 keras-radam = "*"
 tensorflow = "*"
+plotly = "*"
 
 [requires]
 python_version = "3.6"

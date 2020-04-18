@@ -3,7 +3,6 @@ import pickle
 import better_exceptions; better_exceptions.hook()
 
 import numpy as np
-import pandas as pd
 import os, sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
@@ -19,15 +18,17 @@ from tensorflow.keras.optimizers import Adam
 from keras_radam import RAdam
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 
+from dataloader import HazardBigExamLoader, HazardAudicor10sLoader
+from dataloader import preprocessing
 from ekg.utils import data_utils
 from ekg.utils.data_utils import BaseDataGenerator
-from ekg.utils.datasets import BigExamLoader, Audicor10sLoader
 from ekg.callbacks import LogBest, ConcordanceIndex
 
 from ekg.models.backbone import backbone
 from ekg.losses import negative_hazard_log_likelihood
 
 from evaluation import evaluation
+from ekg.utils.eval_utils import get_KM_plot, get_survival_scatter
 
 from sklearn.utils import shuffle
 from tensorflow import keras
@@ -89,83 +90,6 @@ def to_cs_st(y):
     st = y[:, :, 1]
     return st * (-1 * (cs == 0) + 1 * (cs == 1))
 
-def preprocessing(dataloader):
-    '''Remove incomplete data
-    '''
-    remove_mask = np.zeros((dataloader.abnormal_y.shape[0], ), dtype=bool) # all False
-
-    for i, event_name in enumerate(wandb.config.events):
-        remove_mask = np.logical_or(remove_mask, dataloader.abnormal_y[:, i, 0] == -1)
-
-    keep_mask = ~remove_mask
-    dataloader.abnormal_X = dataloader.abnormal_X[keep_mask]
-    dataloader.abnormal_y = dataloader.abnormal_y[keep_mask]
-    dataloader.abnormal_subject_id = dataloader.abnormal_subject_id[keep_mask]
-
-class HazardBigExamLoader(BigExamLoader):
-    def load_abnormal_y(self):
-        '''
-        Output:
-            np.ndarray of shape [n_instances, n_events, 2], where:
-                [n_instances, n_events, 0] = cs
-                [n_instances, n_events, 1] = st
-        '''
-        y = np.zeros((self.abnormal_X.shape[0] // len(self.channel_set), len(wandb.config.events), 2))
-
-        df = pd.read_csv(os.path.join(self.datadir, 'abnormal_event.csv'))
-        for i, event_name in enumerate(wandb.config.events):
-            y[:, i, 0] = df['{}_censoring_status'.format(event_name)].values
-            y[:, i, 1] = df['{}_survival_time'.format(event_name)].values
-
-        return np.tile(y, [len(self.channel_set), 1, 1])
-
-
-class HazardAudicor10sLoader(Audicor10sLoader):
-    def load_abnormal_y(self):
-        '''
-        Output:
-            np.ndarray of shape [n_instances, n_events, 2], where:
-                [n_instances, n_events, 0] = cs
-                [n_instances, n_events, 1] = st
-        '''
-        y = np.zeros((self.abnormal_X.shape[0] // len(self.channel_set), len(wandb.config.events), 2))
-
-        df = pd.read_csv(os.path.join(self.datadir, 'abnormal_event.csv'))
-        df.filename = df.filename.str.lower()
-
-        # load filenames of abnormal data
-        filenames = np.load(os.path.join(self.datadir, 'abnormal_filenames.npy'))
-        filenames = np.vectorize(lambda fn: fn.split('/')[-1].lower())(filenames)
-        filename_df = pd.DataFrame(filenames, columns=['filename'])
-
-        # use the filename to get cs and st
-        for i, event_name in enumerate(wandb.config.events):
-            merged_df = pd.merge(filename_df, 
-                                    df[['filename', '{}_censoring_status'.format(event_name), '{}_survival_time'.format(event_name)]],
-                                    left_on='filename', right_on='filename',
-                                    how='left')
-            merged_df = merged_df.replace(np.nan, -1) # replace nan with -1
-            y[:, i, 0] = merged_df['{}_censoring_status'.format(event_name)]
-            y[:, i, 1] = merged_df['{}_survival_time'.format(event_name)]
-
-        return np.tile(y, [len(self.channel_set), 1, 1])
-
-def load_normal_y(self):
-    '''
-    Output:
-        np.ndarray of shape [n_instances, n_events, 2], where:
-            [n_instances, n_events, 0] = cs, 0 survived
-            [n_instances, n_events, 1] = st, maximum value of that events
-    '''
-    y = np.zeros((self.normal_X.shape[0], len(wandb.config.events), 2))
-    y[:, :, 0] = 0 # survived
-    y[:, :, 1] = self.abnormal_y[:, :, 1].max()
-    
-    return y
-
-HazardBigExamLoader.load_normal_y = load_normal_y
-HazardAudicor10sLoader.load_normal_y = load_normal_y
-
 class LossChecker(keras.callbacks.Callback):
     def __init__(self, train_set, valid_set):
         self.train_set = train_set
@@ -204,6 +128,29 @@ class LossChecker(keras.callbacks.Callback):
         print('training loss:', self.loss(to_cs_st(self.train_set[1]), train_pred))
         print('validation loss:', self.loss(to_cs_st(self.valid_set[1]), valid_pred))
 
+def evaluation_plot(model, train_set, test_set, prefix=''):
+    # upload plots
+    train_pred = model.predict(train_set[0])
+    test_pred = model.predict(test_set[0])
+    figures = get_KM_plot(train_pred, test_pred, test_set[1], wandb.config.events)
+
+    # KM curve
+    for fig, event_name in zip(figures, wandb.config.events):
+        wandb.log({'{}best model {} KM curve'.format(prefix, event_name): wandb.Image(fig)})
+
+    # scatter
+    for i, event_name in enumerate(wandb.config.events):
+        wandb.log({'{}best model {} scatter'.format(prefix, event_name): 
+                        wandb.Image(get_survival_scatter(test_pred[:, i], 
+                                                        test_set[1][:, i, 0], 
+                                                        test_set[1][:, i, 1], 
+                                                        event_name))})
+
+def print_statistics(cs):
+    print('# of censored:', (cs==0).sum())
+    print('# of events:', (cs==1).sum())
+    print('event ratio:', (cs==1).sum() / (cs==0).sum())
+
 def train():
     dataloaders = list()
     if 'big_exam' in wandb.config.datasets:
@@ -216,6 +163,13 @@ def train():
                             preprocessing_fn=preprocessing)
 
     train_set, valid_set, test_set = g.get()
+
+    print('Statistics:')
+    for set_name, dataset in [['Training set', train_set], ['Validation set', valid_set], ['Testing set', test_set]]:
+        print('{}:'.format(set_name))
+        for i, event_name in enumerate(wandb.config.events):
+            print('{}:'.format(event_name))
+            print_statistics(dataset[1][:, i, 0])
 
     # save means and stds to wandb
     with open(os.path.join(wandb.run.dir, 'means_and_stds.pl'), 'wb') as f:
@@ -261,6 +215,10 @@ def train():
 
     print('Testing set:')
     evaluation(model, test_set, wandb.config.events)
+
+    evaluation_plot(model, train_set, train_set, 'training - ')
+    evaluation_plot(model, train_set, valid_set, 'validation - ')
+    evaluation_plot(model, train_set, test_set, 'testing - ')
 
 if __name__ == '__main__':
     train()
