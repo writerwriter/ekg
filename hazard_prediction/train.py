@@ -2,6 +2,7 @@
 import pickle
 import better_exceptions; better_exceptions.hook()
 
+import matplotlib.pyplot as plt
 import numpy as np
 import os, sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
@@ -27,8 +28,8 @@ from ekg.callbacks import LogBest, ConcordanceIndex
 from ekg.models.backbone import backbone
 from ekg.losses import negative_hazard_log_likelihood
 
+from evaluation import evaluation_plot, print_statistics
 from evaluation import evaluation
-from ekg.utils.eval_utils import get_KM_plot, get_survival_scatter
 
 from sklearn.utils import shuffle
 from tensorflow import keras
@@ -61,6 +62,10 @@ set_wandb_config({
     # data
     'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD'
     'event_weights': [1, 0.5],
+    'censoring_limit': 400, # np.Inf if no limit specified
+
+    'output_l1_regularizer': 0, # 0 if disable
+    'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
 
     'remove_dirty': 2, # deprecated, always remove dirty data
     'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
@@ -128,29 +133,6 @@ class LossChecker(keras.callbacks.Callback):
         print('training loss:', self.loss(to_cs_st(self.train_set[1]), train_pred))
         print('validation loss:', self.loss(to_cs_st(self.valid_set[1]), valid_pred))
 
-def evaluation_plot(model, train_set, test_set, prefix=''):
-    # upload plots
-    train_pred = model.predict(train_set[0])
-    test_pred = model.predict(test_set[0])
-    figures = get_KM_plot(train_pred, test_pred, test_set[1], wandb.config.events)
-
-    # KM curve
-    for fig, event_name in zip(figures, wandb.config.events):
-        wandb.log({'{}best model {} KM curve'.format(prefix, event_name): wandb.Image(fig)})
-
-    # scatter
-    for i, event_name in enumerate(wandb.config.events):
-        wandb.log({'{}best model {} scatter'.format(prefix, event_name): 
-                        wandb.Image(get_survival_scatter(test_pred[:, i], 
-                                                        test_set[1][:, i, 0], 
-                                                        test_set[1][:, i, 1], 
-                                                        event_name))})
-
-def print_statistics(cs):
-    print('# of censored:', (cs==0).sum())
-    print('# of events:', (cs==1).sum())
-    print('event ratio:', (cs==1).sum() / (cs==0).sum())
-
 def train():
     dataloaders = list()
     if 'big_exam' in wandb.config.datasets:
@@ -163,20 +145,17 @@ def train():
                             preprocessing_fn=preprocessing)
 
     train_set, valid_set, test_set = g.get()
-
-    print('Statistics:')
-    for set_name, dataset in [['Training set', train_set], ['Validation set', valid_set], ['Testing set', test_set]]:
-        print('{}:'.format(set_name))
-        for i, event_name in enumerate(wandb.config.events):
-            print('{}:'.format(event_name))
-            print_statistics(dataset[1][:, i, 0])
+    print_statistics(train_set, valid_set, test_set)
 
     # save means and stds to wandb
     with open(os.path.join(wandb.run.dir, 'means_and_stds.pl'), 'wb') as f:
         pickle.dump(g.means_and_stds, f)
 
     model = backbone(wandb.config, include_top=True, classification=False, classes=len(wandb.config.events))
-    model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), loss=negative_hazard_log_likelihood(wandb.config.event_weights))
+    model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), 
+                    loss=negative_hazard_log_likelihood(wandb.config.event_weights,
+                                                            wandb.config.output_l1_regularizer,
+                                                            wandb.config.output_l2_regularizer))
     model.summary()
     wandb.log({'model_params': model.count_params()}, commit=False)
 
@@ -188,7 +167,7 @@ def train():
                     ['{}_cindex'.format(event_name) for event_name in wandb.config.events] +
                     ['val_{}_cindex'.format(event_name) for event_name in wandb.config.events]),
         WandbCallback(log_gradients=False, training_data=train_set),
-        EarlyStopping(monitor='val_loss', patience=50), # must be placed last otherwise it won't work
+        EarlyStopping(monitor='val_loss', patience=20), # must be placed last otherwise it won't work
     ]
 
     train_set = shuffle(train_set[0], train_set[1])

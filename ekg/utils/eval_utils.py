@@ -51,47 +51,41 @@ def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=
             print(cell, end=' ')
         print()
 
-def get_KM_plot(train_pred, test_pred, test_true, event_names):
+def get_KM_plot(train_pred, test_pred, test_true, event_name):
     '''
     Args:
-        train_pred:     np.array of shape (n_samples, n_events)
-        test_pred:      np.array of shape (n_samples, n_events)
-        test_true:      np.array of shape (n_samples, n_events, 2)
+        train_pred:     np.array of shape (n_samples)
+        test_pred:      np.array of shape (n_samples)
+        test_true:      np.array of shape (n_samples, 2)
                         [:, :, 0] - censoring states
                         [:, :, 1] - survival times
     '''
     # find median of training set
-    medians = np.median(train_pred, axis=0)
+    median = np.median(train_pred) # single value
 
-    for i in range(len(event_names)):
-        # split testing data into 2 groups by median, high risk / low risk
-        median = medians[i]
-        
-        high_risk_indices = np.where(test_pred[:, i] >= median)[0]
-        low_risk_indices = np.where(test_pred[:, i] < median)[0]
-        
-        high_risk_cs = test_true[high_risk_indices, i, 0]
-        high_risk_st = test_true[high_risk_indices, i, 1]
-        
-        low_risk_cs = test_true[low_risk_indices, i, 0]
-        low_risk_st = test_true[low_risk_indices, i, 1]
-        
-        # calculate logrank p value
-        p_value = logrank_test(high_risk_st, low_risk_st, high_risk_cs, low_risk_cs).p_value
-        
-        # plot KM curve
-        plt.figure(figsize=(20, 10))
+    # split testing data into 2 groups by median, high risk / low risk
+    high_risk_indices = np.where(test_pred >= median)[0]
+    low_risk_indices = np.where(test_pred < median)[0]
+    
+    high_risk_cs = test_true[high_risk_indices, 0]
+    high_risk_st = test_true[high_risk_indices, 1]
+    
+    low_risk_cs = test_true[low_risk_indices, 0]
+    low_risk_st = test_true[low_risk_indices, 1]
+    
+    # calculate logrank p value
+    p_value = logrank_test(high_risk_st, low_risk_st, high_risk_cs, low_risk_cs).p_value
+    
+    # plot KM curve
+    kmf = KaplanMeierFitter()
+    kmf.fit(high_risk_st, high_risk_cs, label='high risk')
+    a1 = kmf.plot(figsize=(20, 10), title='{} KM curve, logrank p-value: {}'.format(event_name, p_value))
 
-        kmf = KaplanMeierFitter()
-        kmf.fit(high_risk_st, high_risk_cs, label='high risk')
-        a1 = kmf.plot(figsize=(20, 10), title='{} KM curve, logrank p-value: {}'.format(event_names[i], p_value))
+    kmf.fit(low_risk_st, low_risk_cs, label='low risk')
+    kmf.plot(ax=a1)
+    plt.tight_layout()
 
-        kmf.fit(low_risk_st, low_risk_cs, label='low risk')
-        kmf.plot(ax=a1)
-        plt.tight_layout()
-
-    figures = list(map(plt.figure, plt.get_fignums()))
-    return figures
+    return plt
 
 def get_survival_scatter(y_pred, cs_true, st_true, event_name):
     '''

@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow.keras.backend as K
 
-def negative_hazard_log_likelihood(event_weights):
+def negative_hazard_log_likelihood(event_weights, output_l1=0, output_l2=0):
     def loss(cs_st, pred_risk):
         '''
             cs_st: st * ( -1 * (cs == 0) + 1 * (cs == 1) ) # (?, n_events)
@@ -38,7 +38,7 @@ def negative_hazard_log_likelihood(event_weights):
                             dtype=tf.float32)
 
         nhlls = nhlls * event_weights
-        return K.mean(nhlls)
+        return K.mean(nhlls) + output_l1 * K.sum(K.abs(pred_risk)) + output_l2 * K.sum(pred_risk * pred_risk)
     return loss
 
 def cindex_loss(y, risk):

@@ -17,6 +17,16 @@ def preprocessing(dataloader):
     dataloader.abnormal_y = dataloader.abnormal_y[keep_mask]
     dataloader.abnormal_subject_id = dataloader.abnormal_subject_id[keep_mask]
 
+    # limit censoring for every event
+    for i, event_name in enumerate(dataloader.config.events):
+        censor_mask = dataloader.abnormal_y[:, i, 1] > dataloader.config.censoring_limit # st > censoring_limit
+        dataloader.abnormal_y[censor_mask, i, 0] = 0 # cs: no event occurred
+        dataloader.abnormal_y[censor_mask, i, 1] = dataloader.config.censoring_limit # st: censoring_limit
+
+        censor_mask = dataloader.normal_y[:, i, 1] > dataloader.config.censoring_limit # st > censoring_limit
+        dataloader.normal_y[censor_mask, i, 0] = 0 # cs: no event occurred
+        dataloader.normal_y[censor_mask, i, 1] = dataloader.config.censoring_limit # st: censoring_limit
+
 class HazardBigExamLoader(BigExamLoader):
     def load_abnormal_y(self):
         '''
