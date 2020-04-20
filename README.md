@@ -74,6 +74,7 @@
 | Signal Length             	| 10 sec                           	| 10 sec          	|
 | Events                    	| ADHF, MI, Stroke, CVD, Mortality 	| ADHF, Mortality 	|
 | Longest Follow-up Days    	|                                  	|                 	|
+| Longest Event Days    	    |                                  	|                 	|
 
 ## Results
 * Notation
@@ -81,15 +82,22 @@
     * `A`: audicor_10s
 * Abnormal detection
     * Best Model / 3-Model Ensemble / 5-Model Ensemble
-        | Training data      	| Validation Data 	| Testing Data  	| Accuracy  	| Precision      	| Recall           	|
+        | Training data      | Validation Data | Testing Data  | Accuracy | Precision | Recall | F1 |
+        |--------------------|-----------------|---------------|----------|-----------|--------|----|
+        | 0.49 * B           | 0.21 * B        | 0.3 * B       |          |           |        |    |
+        | 0.49 * A           | 0.21 * A        | 0.3 * A       |          |           |        |    |
+        | 0.49 * (B + A)     | 0.21 * (B + A)  | 0.3 * (B + A) |          |           |        |    |
+        | 1.0 * B + 0.49 * A | 0.21 * A        | 0.3 * A       |          |           |        |    |
+
+* Hazard prediction
+    * ADHF - Concordance Index
+        | Training data      	| Validation Data 	| Testing Data  	| Best Model  	| 3-Model Ensemble 	| 5-Model Ensemble 	|
         |--------------------	|-----------------	|---------------	|-------------- |------------------	|------------------	|
-        | 0.49 * B           	| 0.21 * B        	| 0.3 * B       	|             	|                  	|                  	|
+        | 0.49 * B           	| 0.21 * B        	| 0.3 * B       	|               |                  	|                  	|
         | 0.49 * A           	| 0.21 * A        	| 0.3 * A       	|               |                  	|                  	|
         | 0.49 * (B + A)     	| 0.21 * (B + A)  	| 0.3 * (B + A) 	|               |                  	|                  	|
         | 1.0 * B + 0.49 * A 	| 0.21 * A        	| 0.3 * A       	|               |                  	|                  	|
-
-* Hazard prediction
-    * Concordance Index
+    * Mortality - Concordance Index
         | Training data      	| Validation Data 	| Testing Data  	| Best Model  	| 3-Model Ensemble 	| 5-Model Ensemble 	|
         |--------------------	|-----------------	|---------------	|-------------- |------------------	|------------------	|
         | 0.49 * B           	| 0.21 * B        	| 0.3 * B       	|               |                  	|                  	|
