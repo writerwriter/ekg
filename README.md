@@ -1,4 +1,4 @@
-# ekg
+# EKG
 
 ## Before Experiments
 1. Adjust `config.cfg`.
@@ -60,3 +60,39 @@
             * Mortality_date
             * Mortality_survival_time
             * Mortality_censoring_status
+
+## Data Statistics
+| Data                      	| big_exam                         	| audicor_10s     	|
+|---------------------------	|----------------------------------	|-----------------	|
+| # of Normal Subjects      	|                                  	|                 	|
+| # of Normal Signals       	|                                  	|                 	|
+| # of Abnormal Subjects    	|                                  	|                 	|
+| # of Abnormal Signals     	|                                  	|                 	|
+| # of EKG Channels         	| 8                                	| 1               	|
+| # of Heart Sound Channels 	| 2                                	| 1               	|
+| Sampling Rate             	| 1000                             	| 500             	|
+| Signal Length             	| 10 sec                           	| 10 sec          	|
+| Events                    	| ADHF, MI, Stroke, CVD, Mortality 	| ADHF, Mortality 	|
+| Longest Follow-up Days    	|                                  	|                 	|
+
+## Results
+* Notation
+    * `B`: big_exam
+    * `A`: audicor_10s
+* Abnormal detection
+    * Best Model / 3-Model Ensemble / 5-Model Ensemble
+        | Training data      	| Validation Data 	| Testing Data  	| Accuracy  	| Precision      	| Recall           	|
+        |--------------------	|-----------------	|---------------	|-------------- |------------------	|------------------	|
+        | 0.49 * B           	| 0.21 * B        	| 0.3 * B       	|             	|                  	|                  	|
+        | 0.49 * A           	| 0.21 * A        	| 0.3 * A       	|               |                  	|                  	|
+        | 0.49 * (B + A)     	| 0.21 * (B + A)  	| 0.3 * (B + A) 	|               |                  	|                  	|
+        | 1.0 * B + 0.49 * A 	| 0.21 * A        	| 0.3 * A       	|               |                  	|                  	|
+
+* Hazard prediction
+    * Concordance Index
+        | Training data      	| Validation Data 	| Testing Data  	| Best Model  	| 3-Model Ensemble 	| 5-Model Ensemble 	|
+        |--------------------	|-----------------	|---------------	|-------------- |------------------	|------------------	|
+        | 0.49 * B           	| 0.21 * B        	| 0.3 * B       	|               |                  	|                  	|
+        | 0.49 * A           	| 0.21 * A        	| 0.3 * A       	|               |                  	|                  	|
+        | 0.49 * (B + A)     	| 0.21 * (B + A)  	| 0.3 * (B + A) 	|               |                  	|                  	|
+        | 1.0 * B + 0.49 * A 	| 0.21 * A        	| 0.3 * A       	|               |                  	|                  	|
