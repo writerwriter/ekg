@@ -12,11 +12,11 @@ from ekg.utils.train_utils import set_wandb_config
 # for loging result
 import wandb
 from wandb.keras import WandbCallback
-wandb.init(project='ekg-abnormal_detection', entity='toosyou')
 
-import keras
-from keras.optimizers import Adam
-from keras.callbacks import EarlyStopping, ReduceLROnPlateau
+from tensorflow import keras
+from tensorflow.keras.optimizers import Adam
+from keras_radam import RAdam
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from ekg.callbacks import LogBest
 
 from ekg.utils import data_utils
@@ -25,47 +25,6 @@ from ekg.utils.datasets import BigExamLoader, Audicor10sLoader
 import evaluation
 
 from ekg.models.backbone import backbone
-
-# search result
-set_wandb_config({
-    # model
-    'sincconv_filter_length': 31,
-    'sincconv_nfilters': 8,
-
-    'branch_nlayers': 4,
-
-    'ekg_kernel_length': 35,
-    'hs_kernel_length': 13,
-
-    'final_nlayers': 3,
-    'final_kernel_length': 7,
-    'final_nonlocal_nlayers': 0,
-
-    'kernel_initializer': 'glorot_uniform',
-    'skip_connection': False,
-    'crop_center': True,
-
-    # data
-    'remove_dirty': 2, # deprecated, always remove dirty data
-    'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
-
-    'big_exam_ekg_channels': [], # [0, 1, 2, 3, 4, 5, 6, 7],
-    'big_exam_hs_channels': [8, 9],
-    'big_exam_only_train': True,
-
-    'audicor_10s_ekg_channels': [],
-    'audicor_10s_hs_channels': [1],
-    'audicor_10s_only_train': False,
-
-    'downsample': 'direct', # average
-
-}, include_preprocessing_setting=True)
-
-set_wandb_config({
-    'sampling_rate': 500 if 'audicor_10s' in wandb.config.datasets else 1000,
-    'n_ekg_channels': data_utils.calculate_n_ekg_channels(wandb.config),
-    'n_hs_channels': data_utils.calculate_n_hs_channels(wandb.config)
-}, include_preprocessing_setting=False)
 
 def preprocessing(dataloader):
     # make ys one-hot
@@ -101,11 +60,12 @@ def train():
         pickle.dump(g.means_and_stds, f)
 
     model = backbone(wandb.config, include_top=True, classification=True, classes=2)
-    model.compile(Adam(amsgrad=True), 'binary_crossentropy', metrics=['acc'])
+    model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), 
+                    'binary_crossentropy', metrics=['acc'])
     model.summary()
 
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=10),
+        EarlyStopping(monitor='val_loss', patience=20),
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         LogBest(),
         WandbCallback(log_gradients=False, training_data=train_set),
@@ -117,7 +77,7 @@ def train():
     # load best model from wandb and evaluate
     print('Evaluate the BEST model!')
 
-    from keras.models import load_model
+    from tensorflow.keras.models import load_model
     from ekg.layers import LeftCropLike, CenterCropLike
     from ekg.layers.sincnet import SincConv1D
 
@@ -133,4 +93,51 @@ def train():
     evaluation.evaluation(model, test_set)
 
 if __name__ == '__main__':
+    wandb.init(project='ekg-abnormal_detection', entity='toosyou')
+
+    # search result
+    set_wandb_config({
+        # model
+        'sincconv_filter_length': 31,
+        'sincconv_nfilters': 8,
+
+        'branch_nlayers': 4,
+
+        'ekg_kernel_length': 35,
+        'hs_kernel_length': 13,
+
+        'final_nlayers': 3,
+        'final_kernel_length': 7,
+        'final_nonlocal_nlayers': 0,
+
+        'kernel_initializer': 'glorot_uniform',
+        'skip_connection': False,
+        'crop_center': True,
+
+        'radam': True,
+
+        # data
+        'remove_dirty': 2, # deprecated, always remove dirty data
+        'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
+
+        'big_exam_ekg_channels': [], # [0, 1, 2, 3, 4, 5, 6, 7],
+        'big_exam_hs_channels': [8, 9],
+        'big_exam_only_train': True,
+
+        'audicor_10s_ekg_channels': [],
+        'audicor_10s_hs_channels': [1],
+        'audicor_10s_only_train': False,
+
+        'downsample': 'direct', # average
+
+        'tf': 2.2
+
+    }, include_preprocessing_setting=True)
+
+    set_wandb_config({
+        'sampling_rate': 500 if 'audicor_10s' in wandb.config.datasets else 1000,
+        'n_ekg_channels': data_utils.calculate_n_ekg_channels(wandb.config),
+        'n_hs_channels': data_utils.calculate_n_hs_channels(wandb.config)
+    }, include_preprocessing_setting=False)
+
     train()

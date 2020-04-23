@@ -8,7 +8,8 @@ import os, sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 from ekg.utils.eval_utils import get_KM_plot, get_survival_scatter
-from ekg.utils.train_utils import set_wandb_config
+
+import wandb
 
 def ensemble_predict(models, X, batch_size=64):
     y_preds = list()
@@ -47,60 +48,11 @@ def log_evaluation(models, test_set, log_prefix, event_names):
         log_name = '{}_{}_cindex'.format(log_prefix, event_name)
         wandb.log({log_name: cindex})
 
-def parse_runs(api, run_paths):
-    models, configs = list(), list()
-
-    modeldir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
-    os.makedirs(modeldir, exist_ok=True)
-    for run_path in run_paths:
-        run = api.run(run_path)
-        run.file('model-best.h5').download(replace=True, root=modeldir)
-
-        models.append(load_model(modeldir + '/model-best.h5', 
-                            custom_objects={'SincConv1D': SincConv1D,
-                                            'LeftCropLike': LeftCropLike,
-                                            'CenterCropLike': CenterCropLike}, compile=False))
-        configs.append(run.config)
-    return models, configs
-
-def parse_sweep(api, sweep_path, number_models, metric):
-    models, configs, model_paths = list(), list(), list()
-
-    modeldir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
-    os.makedirs(modeldir, exist_ok=True)
-
-    sweep = api.sweep(sweep_path[0])
-    # sort runs by metric
-    runs = sorted(sweep.runs, key=lambda run: run.summary.get(metric, np.Inf if 'loss' in metric else 0), 
-                        reverse=False if 'loss' in metric else True)
-    for best_run in runs[:number_models]:
-        best_run.file('model-best.h5').download(replace=True, root=modeldir)
-
-        # load model
-        models.append(load_model(modeldir + '/model-best.h5', 
-                            custom_objects={'SincConv1D': SincConv1D,
-                                            'LeftCropLike': LeftCropLike,
-                                            'CenterCropLike': CenterCropLike}, compile=False))
-        configs.append(best_run.config)
-        model_paths.append(best_run.path)
-    return models, configs, model_paths
-
-def dict_to_wandb_config(config):
-    class Object(object):
-        pass
-
-    wandb_config = Object()
-    for key, value in config.items():
-        setattr(wandb_config, key, value)
-    return wandb_config
-
 def evaluation_plot(models, train_set, run_set, prefix=''):
-    import wandb
-
     # upload plots
     try:
-        train_pred = model.predict(train_set[0])
-        run_pred = model.predict(run_set[0])
+        train_pred = models.predict(train_set[0])
+        run_pred = models.predict(run_set[0])
     except:
         train_pred = ensemble_predict(models, train_set[0])
         run_pred = ensemble_predict(models, run_set[0])
@@ -120,11 +72,11 @@ def evaluation_plot(models, train_set, run_set, prefix=''):
                                                         event_name))})
         plt.close()
 
-def print_statistics(train_set, valid_set, test_set):
+def print_statistics(train_set, valid_set, test_set, event_names):
     print('Statistics:')
     for set_name, dataset in [['Training set', train_set], ['Validation set', valid_set], ['Testing set', test_set]]:
         print('{}:'.format(set_name))
-        for i, event_name in enumerate(wandb.config.events):
+        for i, event_name in enumerate(event_names):
             cs = dataset[1][:, i, 0]
 
             print('{}:'.format(event_name))
@@ -133,69 +85,30 @@ def print_statistics(train_set, valid_set, test_set):
             print('\tevent ratio: {:.4f}'.format((cs==1).sum() / (cs==0).sum()))
             print()
 
-def log_config(configs):
-    def all_same(check_key, check_value, configs):
-        for config in configs:
-            if config[check_key] != check_value:
-                return False
-        return True
-                    
-
-    if len(configs) == 1:
-        set_wandb_config(configs)
-        return
-
-    # get the key with the same value across configs
-    for key, value in configs[0].items():
-        if all_same(key, value, configs):
-            set_wandb_config({key: value})
-
 if __name__ == '__main__':
-    import argparse
-    import wandb
-
-    from tensorflow.keras.models import load_model
-
     from train import HazardBigExamLoader, HazardAudicor10sLoader
     from train import preprocessing
 
-    from ekg.layers import LeftCropLike
-    from ekg.layers.sincnet import SincConv1D
-    from ekg.layers import CenterCropLike
-
-    from ekg.utils import train_utils; train_utils.allow_gpu_growth()
+    from ekg.utils.eval_utils import parse_wandb_models
+    from ekg.utils.eval_utils import get_evaluation_args, evaluation_log
     from ekg.utils.data_utils import BaseDataGenerator
 
-    parser = argparse.ArgumentParser(description='Hazard prediction evaluation.')
-    parser.add_argument('-n', '--n_model', type=int, default=-1,
-                            help='Number of best models to evaluate.')
-    parser.add_argument('-m', '--metric', type=str, default='best_val_loss',
-                            help='Which metric to use for selecting best models from the sweep.')
-    parser.add_argument('paths', metavar='paths', type=str, nargs='+',
-                        help='Run paths or a sweep path of wandb to be evaluated. If n_model >= 1, it will be treated as sweep path.')
+    wandb.init(project='ekg-hazard_prediction', entity='toosyou')
 
-    args = parser.parse_args()
+    # get arguments
+    args = get_evaluation_args('Hazard prediction evaluation.')
 
     # parse models and configs
-    api = wandb.Api()
-    if args.n_model == -1:
-        models, wandb_configs = parse_runs(api, args.paths)
-        wandb_config = dict_to_wandb_config(wandb_configs[0])
+    models, wandb_configs, model_paths, sweep_name = parse_wandb_models(args.paths, args.n_model, args.metric)
 
-        # log models used
-        wandb.config.n_models = len(args.run_paths)
-        wandb.config.models = args.run_paths
-
-    else: # sweep
-        models, wandb_configs, model_paths = parse_sweep(api, args.paths, args.n_model, args.metric)
-        wandb_config = dict_to_wandb_config(wandb_configs[0])
-
-        # log models used
-        wandb.config.n_models = args.n_model
-        wandb.config.models = model_paths
+    evaluation_log(wandb_configs, sweep_name, 
+                    args.paths[0] if args.n_model >= 1 else '',
+                    model_paths)
 
     models[0].summary()
 
+    # get data
+    wandb_config = wandb_configs[0]
     dataloaders = list()
     if 'big_exam' in wandb_config.datasets:
         dataloaders.append(HazardBigExamLoader(wandb_config=wandb_config))
@@ -207,9 +120,7 @@ if __name__ == '__main__':
                             preprocessing_fn=preprocessing)
 
     train_set, valid_set, test_set = g.get()
-    print_statistics(train_set, valid_set, test_set)
-
-    wandb.config.evaluation = True
+    print_statistics(train_set, valid_set, test_set, wandb_config.events)
 
     print('Training set:')
     log_evaluation(models, train_set, 'best', wandb_config.events)
@@ -223,7 +134,3 @@ if __name__ == '__main__':
     evaluation_plot(models, train_set, train_set, 'training - ')
     evaluation_plot(models, train_set, valid_set, 'validation - ')
     evaluation_plot(models, train_set, test_set, 'testing - ')
-
-    # remove the tmp file
-    os.remove(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models', 'model-best.h5'))
-    os.rmdir(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models'))

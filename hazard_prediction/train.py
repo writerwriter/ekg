@@ -13,7 +13,6 @@ from ekg.utils.train_utils import set_wandb_config
 # for loging result
 import wandb
 from wandb.keras import WandbCallback
-wandb.init(project='ekg-hazard_prediction', entity='toosyou')
 
 from tensorflow.keras.optimizers import Adam
 from keras_radam import RAdam
@@ -37,58 +36,6 @@ from tensorflow import keras
 from tensorflow.keras.models import load_model
 from ekg.layers import LeftCropLike, CenterCropLike
 from ekg.layers.sincnet import SincConv1D
-
-# search result
-set_wandb_config({
-    'sincconv_filter_length': 31,
-    'sincconv_nfilters': 8,
-
-    'branch_nlayers': 3,
-
-    'ekg_kernel_length': 21,
-    'hs_kernel_length': 7,
-
-    'final_nlayers': 3,
-    'final_kernel_length': 13,
-    'final_nonlocal_nlayers': 0,
-
-    'batch_size': 128,
-    'kernel_initializer': 'he_normal',
-    'skip_connection': False,
-    'crop_center': True,
-
-    'radam': True,
-
-    # data
-    'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD'
-    'event_weights': [1, 0.5],
-    'censoring_limit': 400, # np.Inf if no limit specified
-
-    'output_l1_regularizer': 0, # 0 if disable
-    'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
-
-    'remove_dirty': 2, # deprecated, always remove dirty data
-    'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
-
-    'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
-    'big_exam_hs_channels': [8, 9],
-    'big_exam_only_train': True,
-
-    'audicor_10s_ekg_channels': [0],
-    'audicor_10s_hs_channels': [1],
-    'audicor_10s_only_train': False,
-
-    'downsample': 'direct', # average
-
-    'tf': '2.2',
-
-}, include_preprocessing_setting=True)
-
-set_wandb_config({
-    'sampling_rate': 500 if 'audicor_10s' in wandb.config.datasets else 1000,
-    'n_ekg_channels': data_utils.calculate_n_ekg_channels(wandb.config),
-    'n_hs_channels': data_utils.calculate_n_hs_channels(wandb.config)
-}, include_preprocessing_setting=False)
 
 def to_cs_st(y):
     cs = y[:, :, 0]
@@ -145,7 +92,7 @@ def train():
                             preprocessing_fn=preprocessing)
 
     train_set, valid_set, test_set = g.get()
-    print_statistics(train_set, valid_set, test_set)
+    print_statistics(train_set, valid_set, test_set, wandb.config.events)
 
     # save means and stds to wandb
     with open(os.path.join(wandb.run.dir, 'means_and_stds.pl'), 'wb') as f:
@@ -200,4 +147,58 @@ def train():
     evaluation_plot(model, train_set, test_set, 'testing - ')
 
 if __name__ == '__main__':
+    wandb.init(project='ekg-hazard_prediction', entity='toosyou')
+
+    # search result
+    set_wandb_config({
+        'sincconv_filter_length': 121,
+        'sincconv_nfilters': 32,
+
+        'branch_nlayers': 1,
+
+        'ekg_kernel_length': 35,
+        'hs_kernel_length': 35,
+
+        'final_nlayers': 7,
+        'final_kernel_length': 13,
+        'final_nonlocal_nlayers': 0,
+
+        'batch_size': 128,
+        'kernel_initializer': 'glorot_uniform',
+        'skip_connection': False,
+        'crop_center': True,
+
+        'radam': True,
+
+        # data
+        'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD'
+        'event_weights': [1, 0.5],
+        'censoring_limit': 99999, # 99999 if no limit specified
+
+        'output_l1_regularizer': 0, # 0 if disable
+        'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
+
+        'remove_dirty': 2, # deprecated, always remove dirty data
+        'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
+
+        'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
+        'big_exam_hs_channels': [8, 9],
+        'big_exam_only_train': True,
+
+        'audicor_10s_ekg_channels': [0],
+        'audicor_10s_hs_channels': [1],
+        'audicor_10s_only_train': False,
+
+        'downsample': 'direct', # average
+
+        'tf': '2.2',
+
+    }, include_preprocessing_setting=True)
+
+    set_wandb_config({
+        'sampling_rate': 500 if 'audicor_10s' in wandb.config.datasets else 1000,
+        'n_ekg_channels': data_utils.calculate_n_ekg_channels(wandb.config),
+        'n_hs_channels': data_utils.calculate_n_hs_channels(wandb.config)
+    }, include_preprocessing_setting=False)
+
     train()

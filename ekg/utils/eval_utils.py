@@ -4,6 +4,19 @@ from lifelines import KaplanMeierFitter
 from lifelines.statistics import logrank_test
 from lifelines.utils import concordance_index
 
+from tensorflow.keras.models import load_model
+import tempfile
+import wandb
+
+from ..layers import LeftCropLike
+from ..layers.sincnet import SincConv1D
+from ..layers import CenterCropLike
+
+from .train_utils import allow_gpu_growth; allow_gpu_growth()
+from .train_utils import set_wandb_config
+
+import argparse
+
 import matplotlib.pyplot as plt
 
 class YamlParser():
@@ -112,3 +125,98 @@ def get_survival_scatter(y_pred, cs_true, st_true, event_name):
 
     plt.tight_layout()
     return plt
+
+def log_configs(configs):
+    '''Log the same parts amoung the configs to wandb
+
+    Args:
+        configs: list of wandb_config objects
+    '''
+    def all_same(check_key, check_value, configs):
+        for config in configs:
+            if config[check_key] != check_value:
+                return False
+        return True
+
+    # convert configs to dicts
+    configs = [vars(config) for config in configs]
+
+    if len(configs) == 1:
+        set_wandb_config(configs[0])
+        return
+
+    # get the key with the same value across configs
+    for key, value in configs[0].items():
+        if all_same(key, value, configs):
+            set_wandb_config({key: value})
+
+def dict_to_config(d):
+    class Object(object):
+        pass
+
+    config = Object()
+    for key, value in d.items():
+        setattr(config, key, value)
+    return config
+
+def parse_wandb_models(path, number_models=-1, metric=None):
+    '''Parse wandb models with either run paths or a sweep path.
+    
+    Args:
+        path: a list contains either run paths or a sweep path
+        number_models: if negative, treat path as run paths, otherwise treat it as a sweep path.
+        metric: metric to sort by when parsing a sweep path
+    '''
+    api = wandb.Api()
+    models, configs, model_paths = list(), list(), list()
+    sweep_name = ''
+
+    modeldir = tempfile.mkdtemp()
+
+    if number_models > 0: # sweep
+        sweep = api.sweep(path[0])
+        sweep_name = sweep.config.get('name', '')
+        # sort runs by metric
+        runs = sorted(sweep.runs, key=lambda run: run.summary.get(metric, np.Inf if 'loss' in metric else 0), 
+                            reverse=False if 'loss' in metric else True)
+    else:
+        runs = [api.run(p) for p in path]
+
+    for run in runs[:number_models]:
+        run.file('model-best.h5').download(replace=True, root=modeldir)
+
+        # load model
+        models.append(load_model(modeldir + '/model-best.h5', 
+                            custom_objects={'SincConv1D': SincConv1D,
+                                            'LeftCropLike': LeftCropLike,
+                                            'CenterCropLike': CenterCropLike}, compile=False))
+
+        configs.append(dict_to_config(run.config))
+        model_paths.append(run.path)
+
+    return models, configs, model_paths, sweep_name
+
+def get_evaluation_args(description):
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument('-n', '--n_model', type=int, default=-1,
+                            help='Number of best models to evaluate.')
+    parser.add_argument('-m', '--metric', type=str, default='best_val_loss',
+                            help='Which metric to use for selecting best models from the sweep.')
+    parser.add_argument('paths', metavar='paths', type=str, nargs='+',
+                        help='Run paths or a sweep path of wandb to be evaluated. If n_model >= 1, it will be treated as sweep path.')
+
+    args = parser.parse_args()
+
+    return args
+
+def evaluation_log(wandb_configs, sweep_name, sweep_path, model_paths):
+    '''Log basic evaluation config.
+
+    '''
+    log_configs(wandb_configs)
+
+    wandb.config.sweep_name = sweep_name
+    wandb.config.sweep_path = sweep_path
+    wandb.config.n_models = len(model_paths)
+    wandb.config.models = model_paths
+    wandb.config.evaluation = True
