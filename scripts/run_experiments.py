@@ -77,17 +77,36 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run both abnormal detection and hazard prediction experiments with all possible setting.')
     parser.add_argument('-f', '--filters', type=str, nargs='*',
                         help='Only run sweeps with certain strings in the sweep name.')
+    parser.add_argument('-e', '--excepts', type=str, nargs='*',
+                        help='Only run sweeps without certain strings in the sweep name.')
+    parser.add_argument('-v', '--verbose', action='store_true', default=False,
+                        help='Print every setting in sweeps when dryrun.')
+    parser.add_argument('--nodryrun', action='store_true', default=False,
+                        help='Really run experiments.')
     
     args = parser.parse_args()
-
     sweeps = get_all_sweeps()
+
     # filter sweeps to run
     if args.filters:
-        print(args.filters)
+        print('With only:', args.filters)
         for f in args.filters:
             sweeps = [sweep for sweep in sweeps if f in sweep['name']]
 
-    for sweep in sweeps:
-        pprint.pprint(sweep)
-        wandb_project = 'ekg-' + sweep['name'].split('/')[0]
-        run_experiment(wandb_project, sweep, wandb_project)
+    if args.excepts:
+        print('Except:', args.excepts)
+        for e in args.excepts:
+            sweeps = [sweep for sweep in sweeps if e not in sweep['name']]
+
+    if args.nodryrun:
+        for sweep in sweeps:
+            pprint.pprint(sweep)
+            wandb_project = 'ekg-' + sweep['name'].split('/')[0]
+            run_experiment(wandb_project, sweep, wandb_project)
+    else: # dryrun
+        if args.verbose:
+            pprint.pprint(sweeps)
+        else:
+            print('Only print names of sweeps, use --verbose to print detail infomation.')
+            pprint.pprint(list(map(lambda s: s['name'], sweeps)))
+        print('Dryrun! Use --nodryrun to really run the experiments.')

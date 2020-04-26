@@ -44,6 +44,29 @@ class HazardBigExamLoader(BigExamLoader):
 
         return np.tile(y, [len(self.channel_set), 1, 1])
 
+    def get_split(self, rs=42):
+        def has_empty(dataset):
+            y = dataset[1]
+            for i in range(len(self.config.events)):
+                if (y[:, i, 0] == 1).sum() <= 1: # # of signals with events
+                    return True
+            return False
+
+        datasets = super().get_split(rs)
+
+        # do split again if there's any set with empty events
+        while True:
+            do_again = False
+            for dataset in datasets:
+                if has_empty(dataset):
+                    do_again = True
+                    break
+            if do_again:
+                rs += 1
+                datasets = super().get_split(rs)
+            else:
+                break # no empty event in any set
+        return datasets
 
 class HazardAudicor10sLoader(Audicor10sLoader):
     def load_abnormal_y(self):

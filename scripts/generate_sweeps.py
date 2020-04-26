@@ -83,8 +83,9 @@ def generate_sweep(task, dataset, hs_ekg_setting):
     if task == 'hazard_prediction':
         events = ['ADHF', 'Mortality'] + (['MI', 'Stroke', 'CVD'] if dataset == 'big_exam' else [])
         set_parameters(sweep, 'events', events)
-        set_parameters(sweep, 'event_weights', [1, 1])
+        set_parameters(sweep, 'event_weights', [1 for _ in events])
         set_parameters(sweep, 'censoring_limit', 400 if dataset == 'hybrid/audicor_as_test' else 99999)
+        set_parameters(sweep, 'batch_size', 64)
     
     return sweep
 
