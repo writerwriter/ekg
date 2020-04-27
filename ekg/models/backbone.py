@@ -8,22 +8,24 @@ from ..layers import LeftCropLike, CenterCropLike
 from ..layers.sincnet import SincConv1D
 from ..layers.non_local import non_local_block
 
-def _ekg_branch(input_data, nlayers, kernel_length, kernel_initializer, skip_connection):
+def _ekg_branch(input_data, nlayers, nfilters, kernel_length, kernel_initializer, skip_connection):
     ekg = input_data
     for i in range(nlayers):
         shortcut = ekg
-        ekg = Conv1D(8, kernel_length, activation='relu', padding='same',
+        ekg = Conv1D(nfilters, kernel_length, activation='relu', padding='same',
                         kernel_initializer=kernel_initializer, name='ekg_branch_conv_{}'.format(i))(ekg)
         ekg = BatchNormalization(name='ekg_branch_bn_{}'.format(i))(ekg)
 
         if skip_connection:
+            shortcut = Conv1D(nfilters, 1, activation='relu', padding='same',
+                            kernel_initializer=kernel_initializer, name='ekg_branch_skip_bottleneck_{}'.format(i))(shortcut)
             ekg = Add(name='ekg_branch_skip_merge_{}'.format(i))([ekg, shortcut])
 
         ekg = MaxPooling1D(3, padding='same', name='ekg_branch_maxpool_{}'.format(i))(ekg)
 
     return ekg
 
-def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, sampling_rate, nlayers, kernel_length, kernel_initializer, skip_connection, name_prefix=''):
+def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, hs_nfilters, sampling_rate, nlayers, kernel_length, kernel_initializer, skip_connection, name_prefix=''):
     hs = input_data
     sincconv_filter_length = sincconv_filter_length - (sincconv_filter_length+1) % 2
     hs = SincConv1D(sincconv_nfilters, sincconv_filter_length, sampling_rate, name='{}sincconv'.format(name_prefix))(hs)
@@ -31,12 +33,12 @@ def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, s
 
     for i in range(nlayers):
         shortcut = hs
-        hs = Conv1D(8, kernel_length, activation='relu', padding='same',
+        hs = Conv1D(hs_nfilters, kernel_length, activation='relu', padding='same',
                         kernel_initializer=kernel_initializer, name='{}conv_{}'.format(name_prefix, i+1))(hs)
         hs = BatchNormalization(name='{}bn_{}'.format(name_prefix, i+1))(hs)
 
         if skip_connection:
-            shortcut = Conv1D(8, 1, activation='relu', padding='same',
+            shortcut = Conv1D(hs_nfilters, 1, activation='relu', padding='same',
                         kernel_initializer=kernel_initializer, name='{}skip_bottleneck_{}'.format(name_prefix, i+1))(shortcut)
             hs = Add(name='{}skip_merge_{}'.format(name_prefix, i+1))([hs, shortcut])
 
@@ -52,7 +54,12 @@ def backbone(config, include_top=False, classification=True, classes=2):
         ekg_input = Lambda(lambda x, n_ekg_channels: x[:, :, :n_ekg_channels], 
                                     arguments={'n_ekg_channels': config.n_ekg_channels}, 
                                     name='ekg_input')(total_input) # (10000, 8)
-        ekg = _ekg_branch(ekg_input, config.branch_nlayers, config.ekg_kernel_length, config.kernel_initializer, config.skip_connection)
+        ekg = _ekg_branch(ekg_input, 
+                            config.branch_nlayers,
+                            config.ekg_nfilters if hasattr(config, 'ekg_nfilters') else 8,
+                            config.ekg_kernel_length, 
+                            config.kernel_initializer, 
+                            config.skip_connection)
 
     # heart sound branch
     if config.n_hs_channels != 0:
@@ -67,6 +74,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
                                     name='hs_split_{}'.format(i))(heart_sound_input)
             hs_outputs.append(_heart_sound_branch(hs, config.sincconv_filter_length,
                                                         config.sincconv_nfilters, 
+                                                        config.hs_nfilters if hasattr(config, 'hs_nfilters') else 8,
                                                         config.sampling_rate,
                                                         config.branch_nlayers,
                                                         config.hs_kernel_length, config.kernel_initializer,

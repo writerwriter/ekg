@@ -29,6 +29,12 @@ base_setting = {
         'hs_kernel_length':{
             'values': [5, 7, 13, 21, 35]
         },
+        'ekg_nfilters':{
+            'values': [1, 2, 4, 8, 16, 32]
+        },
+        'hs_nfilters':{
+            'values': [1, 2, 4, 8, 16, 32]
+        },
         'final_nlayers':{
             'values': [3, 4, 5, 6]
         },

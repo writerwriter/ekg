@@ -23,6 +23,7 @@ from ekg.utils import data_utils
 from ekg.utils.data_utils import BaseDataGenerator
 from ekg.utils.datasets import BigExamLoader, Audicor10sLoader
 import evaluation
+from evaluation import print_statistics
 
 from ekg.models.backbone import backbone
 
@@ -54,6 +55,7 @@ def train():
                             wandb_config=wandb.config,
                             preprocessing_fn=preprocessing)
     train_set, valid_set, test_set = g.get()
+    print_statistics(train_set, valid_set, test_set)
 
     # save means and stds to wandb
     with open(os.path.join(wandb.run.dir, 'means_and_stds.pl'), 'wb') as f:
@@ -63,15 +65,16 @@ def train():
     model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), 
                     'binary_crossentropy', metrics=['acc'])
     model.summary()
+    wandb.log({'model_params': model.count_params()}, commit=False)
 
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=20),
+        EarlyStopping(monitor='val_loss', patience=50),
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         LogBest(),
         WandbCallback(log_gradients=False, training_data=train_set),
     ]
 
-    model.fit(train_set[0], train_set[1], batch_size=64, epochs=40, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
+    model.fit(train_set[0], train_set[1], batch_size=64, epochs=200, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
     model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
 
     # load best model from wandb and evaluate
@@ -101,30 +104,33 @@ if __name__ == '__main__':
         'sincconv_filter_length': 31,
         'sincconv_nfilters': 8,
 
-        'branch_nlayers': 4,
+        'branch_nlayers': 1,
 
         'ekg_kernel_length': 35,
-        'hs_kernel_length': 13,
+        'hs_kernel_length': 35,
 
-        'final_nlayers': 3,
-        'final_kernel_length': 7,
+        'ekg_nfilters': 1,
+        'hs_nfilters': 1,
+
+        'final_nlayers': 5,
+        'final_kernel_length': 21,
         'final_nonlocal_nlayers': 0,
 
         'kernel_initializer': 'glorot_uniform',
         'skip_connection': False,
-        'crop_center': True,
+        'crop_center': False,
 
         'radam': True,
 
         # data
         'remove_dirty': 2, # deprecated, always remove dirty data
-        'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
+        'datasets': ['audicor_10s'], # 'big_exam', 'audicor_10s'
 
         'big_exam_ekg_channels': [], # [0, 1, 2, 3, 4, 5, 6, 7],
         'big_exam_hs_channels': [8, 9],
-        'big_exam_only_train': True,
+        'big_exam_only_train': False,
 
-        'audicor_10s_ekg_channels': [],
+        'audicor_10s_ekg_channels': [0],
         'audicor_10s_hs_channels': [1],
         'audicor_10s_only_train': False,
 
