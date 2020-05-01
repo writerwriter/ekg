@@ -85,6 +85,12 @@ def print_statistics(train_set, valid_set, test_set, event_names):
             print('\tevent ratio: {:.4f}'.format((cs==1).sum() / (cs==0).sum()))
             print()
 
+def to_prediction_model(trainable_model):
+    from tensorflow.keras.models import Model
+    # get the outputs of the prediction model
+    original_output = trainable_model.get_layer('dense')
+    return Model(trainable_model.layers[0].input, original_output.output)
+
 if __name__ == '__main__':
     from train import HazardBigExamLoader, HazardAudicor10sLoader
     from train import preprocessing
@@ -100,6 +106,9 @@ if __name__ == '__main__':
 
     # parse models and configs
     models, wandb_configs, model_paths, sweep_name = parse_wandb_models(args.paths, args.n_model, args.metric)
+
+    if hasattr(wandb_configs[0], 'multi_task_loss') and wandb_configs[0].multi_task_loss:
+        models = [to_prediction_model(model) for model in models]
 
     evaluation_log(wandb_configs, sweep_name, 
                     args.paths[0] if args.n_model >= 1 else '',

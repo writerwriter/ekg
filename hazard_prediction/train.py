@@ -22,63 +22,54 @@ from dataloader import HazardBigExamLoader, HazardAudicor10sLoader
 from dataloader import preprocessing
 from ekg.utils import data_utils
 from ekg.utils.data_utils import BaseDataGenerator
-from ekg.callbacks import LogBest, ConcordanceIndex
+from ekg.callbacks import LogBest, ConcordanceIndex, VarianceChecker
 
 from ekg.models.backbone import backbone
 from ekg.losses import negative_hazard_log_likelihood
 
 from evaluation import evaluation_plot, print_statistics
-from evaluation import evaluation
-
-from sklearn.utils import shuffle
-from tensorflow import keras
+from evaluation import evaluation, to_prediction_model
 
 from tensorflow.keras.models import load_model
 from ekg.layers import LeftCropLike, CenterCropLike
 from ekg.layers.sincnet import SincConv1D
+
+from tensorflow.keras.layers import Input, Lambda
+from tensorflow.keras.models import Model
+from ekg.losses.multi_task import MultiHazardLoss
 
 def to_cs_st(y):
     cs = y[:, :, 0]
     st = y[:, :, 1]
     return st * (-1 * (cs == 0) + 1 * (cs == 1))
 
-class LossChecker(keras.callbacks.Callback):
-    def __init__(self, train_set, valid_set):
-        self.train_set = train_set
-        self.valid_set = valid_set
+def get_multi_task_model(prediction_model):
+    cs_input = Input(shape=(len(wandb.config.events, )), name='cs_input') # (?, n_events)
+    st_input = Input(shape=(len(wandb.config.events, )), name='st_input') # (?, n_events)
+    risks = prediction_model.layers[-1].output # (?, n_events)
 
-    def loss(self, cs_st, pred_risk):
+    loss_inputs = list()
+    for i, event in enumerate(wandb.config.events):
+        loss_inputs.append(Lambda(lambda x, i: x[:, i], arguments={'i': i}, name='cs_{}'.format(event))(cs_input)) # cs
+        loss_inputs.append(Lambda(lambda x, i: x[:, i], arguments={'i': i}, name='st_{}'.format(event))(st_input)) # st
+        
+    for i, event in enumerate(wandb.config.events):
+        loss_inputs.append(Lambda(lambda x, i: x[:, i], arguments={'i': i}, name='risk_{}'.format(event))(risks)) # risk
 
-        cs = (cs_st > 0).astype(float) # (?, n_events)
-        st = np.abs(cs_st) # (?, n_events)
+    output = MultiHazardLoss(n_outputs = len(wandb.config.events))(loss_inputs)
+    return Model([prediction_model.input, cs_input, st_input], output)
 
-        total_loss = 0
-        for i in range(cs.shape[-1]): # for every event
-            this_cs = cs[:, i]
-            this_st = st[:, i]
-            this_risk = pred_risk[:, i]
+def get_train_valid(train_set, valid_set):
+    if wandb.config.multi_task_loss:
+        X_train = [train_set[0], train_set[1][:, :, 0], train_set[1][:, :, 1]]
+        X_valid = [valid_set[0], valid_set[1][:, :, 0], valid_set[1][:, :, 1]]
 
-            sorting_indices = np.argsort(this_st)[::-1]
-            sorted_cs = this_cs[sorting_indices]
-            sorted_risk = this_risk[sorting_indices]
+        y_train, y_valid = None, None
+    else:
+        X_train, X_valid = train_set[0], valid_set[0]
+        y_train, y_valid = to_cs_st(train_set[1]), to_cs_st(valid_set[1])
 
-            hazard_ratio = np.exp(sorted_risk)
-            log_risk = np.log(np.cumsum(hazard_ratio))
-            uncensored_likelihood = sorted_risk - log_risk
-            censored_likelihood = sorted_cs * uncensored_likelihood
-            total_loss += -np.sum(censored_likelihood)
-            if total_loss != total_loss:
-                import sys; sys.exit(-1)
-                import pdb; pdb.set_trace()
-        return total_loss / cs.shape[-1]
-
-    def on_epoch_end(self, epoch, logs={}):
-        train_pred = self.model.predict(self.train_set[0])
-        valid_pred = self.model.predict(self.valid_set[0])
-
-        print()
-        print('training loss:', self.loss(to_cs_st(self.train_set[1]), train_pred))
-        print('validation loss:', self.loss(to_cs_st(self.valid_set[1]), valid_pred))
+    return X_train, y_train, X_valid, y_valid
 
 def train():
     dataloaders = list()
@@ -98,31 +89,37 @@ def train():
     with open(os.path.join(wandb.run.dir, 'means_and_stds.pl'), 'wb') as f:
         pickle.dump(g.means_and_stds, f)
 
-    model = backbone(wandb.config, include_top=True, classification=False, classes=len(wandb.config.events))
-    model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), 
-                    loss=negative_hazard_log_likelihood(wandb.config.event_weights,
-                                                            wandb.config.output_l1_regularizer,
-                                                            wandb.config.output_l2_regularizer))
-    model.summary()
-    wandb.log({'model_params': model.count_params()}, commit=False)
+    # get model
+    prediction_model = backbone(wandb.config, include_top=True, classification=False, classes=len(wandb.config.events))
+    trainable_model = get_multi_task_model(prediction_model) if wandb.config.multi_task_loss else prediction_model
+
+    loss = None if wandb.config.multi_task_loss else negative_hazard_log_likelihood(wandb.config.event_weights,
+                                                    wandb.config.output_l1_regularizer,
+                                                    wandb.config.output_l2_regularizer)
+                                            
+    trainable_model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), loss=loss)
+    trainable_model.summary()
+    wandb.log({'model_params': trainable_model.count_params()}, commit=False)
 
     callbacks = [
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
-        LossChecker(train_set, valid_set),
-        ConcordanceIndex(train_set, valid_set, wandb.config.events),
+        # LossChecker(train_set, valid_set),
+        ConcordanceIndex(train_set, valid_set, wandb.config.events, prediction_model),
         LogBest(records=['val_loss', 'loss'] + 
                     ['{}_cindex'.format(event_name) for event_name in wandb.config.events] +
                     ['val_{}_cindex'.format(event_name) for event_name in wandb.config.events]),
-        WandbCallback(log_gradients=False, training_data=train_set),
-        EarlyStopping(monitor='val_loss', patience=20), # must be placed last otherwise it won't work
+        WandbCallback(),
+        EarlyStopping(monitor='val_loss', patience=50), # must be placed last otherwise it won't work
     ]
 
-    train_set = shuffle(train_set[0], train_set[1])
-    valid_set = shuffle(valid_set[0], valid_set[1])
-    model.fit(train_set[0], to_cs_st(train_set[1]), batch_size=wandb.config.batch_size, epochs=500,
-                validation_data=(valid_set[0], to_cs_st(valid_set[1])),
-                callbacks=callbacks, shuffle=True)
-    model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
+    if wandb.config.multi_task_loss:
+        callbacks = [VarianceChecker(wandb.config.events)] + callbacks
+
+    X_train, y_train, X_valid, y_valid = get_train_valid(train_set, valid_set)
+
+    trainable_model.fit(X_train, y_train, batch_size=wandb.config.batch_size, epochs=500,
+                validation_data=(X_valid, y_valid), callbacks=callbacks, shuffle=True)
+    trainable_model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
 
     # load best model from wandb and evaluate
     print('Evaluate the BEST model!')
@@ -130,21 +127,23 @@ def train():
     custom_objects = {
         'SincConv1D': SincConv1D,
         'LeftCropLike': LeftCropLike, 
-        'CenterCropLike': CenterCropLike
+        'CenterCropLike': CenterCropLike,
+        'MultiHazardLoss': MultiHazardLoss,
     }
 
     model = load_model(os.path.join(wandb.run.dir, 'model-best.h5'),
                         custom_objects=custom_objects, compile=False)
+    prediction_model = to_prediction_model(model)
 
     print('Training set:')
-    evaluation(model, train_set, wandb.config.events)
+    evaluation(prediction_model, train_set, wandb.config.events)
 
     print('Testing set:')
-    evaluation(model, test_set, wandb.config.events)
+    evaluation(prediction_model, test_set, wandb.config.events)
 
-    evaluation_plot(model, train_set, train_set, 'training - ')
-    evaluation_plot(model, train_set, valid_set, 'validation - ')
-    evaluation_plot(model, train_set, test_set, 'testing - ')
+    evaluation_plot(prediction_model, train_set, train_set, 'training - ')
+    evaluation_plot(prediction_model, train_set, valid_set, 'validation - ')
+    evaluation_plot(prediction_model, train_set, test_set, 'testing - ')
 
 if __name__ == '__main__':
     wandb.init(project='ekg-hazard_prediction', entity='toosyou')
@@ -159,6 +158,9 @@ if __name__ == '__main__':
         'ekg_kernel_length': 35,
         'hs_kernel_length': 35,
 
+        'ekg_nfilters': 8,
+        'hs_nfilters': 8,
+
         'final_nlayers': 7,
         'final_kernel_length': 13,
         'final_nonlocal_nlayers': 0,
@@ -170,10 +172,12 @@ if __name__ == '__main__':
 
         'radam': True,
 
+        'multi_task_loss': True,
+
         # data
         'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD'
         'event_weights': [1, 0.5],
-        'censoring_limit': 99999, # 99999 if no limit specified
+        'censoring_limit': 400, # 99999 if no limit specified
 
         'output_l1_regularizer': 0, # 0 if disable
         'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1

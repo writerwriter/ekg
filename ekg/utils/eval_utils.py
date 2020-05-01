@@ -11,6 +11,7 @@ import wandb
 from ..layers import LeftCropLike
 from ..layers.sincnet import SincConv1D
 from ..layers import CenterCropLike
+from ..losses.multi_task import MultiHazardLoss
 
 from .train_utils import allow_gpu_growth; allow_gpu_growth()
 from .train_utils import set_wandb_config
@@ -189,7 +190,8 @@ def parse_wandb_models(path, number_models=-1, metric=None):
         models.append(load_model(modeldir + '/model-best.h5', 
                             custom_objects={'SincConv1D': SincConv1D,
                                             'LeftCropLike': LeftCropLike,
-                                            'CenterCropLike': CenterCropLike}, compile=False))
+                                            'CenterCropLike': CenterCropLike,
+                                            'MultiHazardLoss': MultiHazardLoss}, compile=False))
 
         configs.append(dict_to_config(run.config))
         model_paths.append(run.path)

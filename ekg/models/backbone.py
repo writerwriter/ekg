@@ -56,7 +56,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
                                     name='ekg_input')(total_input) # (10000, 8)
         ekg = _ekg_branch(ekg_input, 
                             config.branch_nlayers,
-                            config.ekg_nfilters if hasattr(config, 'ekg_nfilters') else 8,
+                            config.ekg_nfilters,
                             config.ekg_kernel_length, 
                             config.kernel_initializer, 
                             config.skip_connection)
@@ -74,7 +74,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
                                     name='hs_split_{}'.format(i))(heart_sound_input)
             hs_outputs.append(_heart_sound_branch(hs, config.sincconv_filter_length,
                                                         config.sincconv_nfilters, 
-                                                        config.hs_nfilters if hasattr(config, 'hs_nfilters') else 8,
+                                                        config.hs_nfilters,
                                                         config.sampling_rate,
                                                         config.branch_nlayers,
                                                         config.hs_kernel_length, config.kernel_initializer,
