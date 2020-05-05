@@ -55,17 +55,18 @@ class HazardBigExamLoader(BigExamLoader):
         datasets = super().get_split(rs)
 
         # do split again if there's any set with empty events
-        while True:
-            do_again = False
-            for dataset in datasets:
-                if has_empty(dataset):
-                    do_again = True
-                    break
-            if do_again:
-                rs += 1
-                datasets = super().get_split(rs)
-            else:
-                break # no empty event in any set
+        if len(self.config.datasets) == 1:
+            while True:
+                do_again = False
+                for dataset in datasets:
+                    if has_empty(dataset):
+                        do_again = True
+                        break
+                if do_again:
+                    rs += 1
+                    datasets = super().get_split(rs)
+                else:
+                    break # no empty event in any set
         return datasets
 
 class HazardAudicor10sLoader(Audicor10sLoader):
