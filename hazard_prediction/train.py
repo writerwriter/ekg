@@ -175,19 +175,19 @@ if __name__ == '__main__':
         'multi_task_loss': True,
 
         # data
-        'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD'
-        'event_weights': [1, 0.5],
-        'censoring_limit': 400, # 99999 if no limit specified
+        'events': ['ADHF', 'Mortality', 'MI', 'Stroke', 'CVD'], # 'MI', 'Stroke', 'CVD'
+        'event_weights': [1, 1, 1, 1, 1],
+        'censoring_limit': 99999, # 99999 if no limit specified
 
         'output_l1_regularizer': 0, # 0 if disable
         'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
 
         'remove_dirty': 2, # deprecated, always remove dirty data
-        'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
+        'datasets': ['big_exam'], # 'big_exam', 'audicor_10s'
 
-        'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
+        'big_exam_ekg_channels': [0, 1, 2, 3, 4, 5, 6, 7], # [0, 1, 2, 3, 4, 5, 6, 7],
         'big_exam_hs_channels': [8, 9],
-        'big_exam_only_train': True,
+        'big_exam_only_train': False,
 
         'audicor_10s_ekg_channels': [0],
         'audicor_10s_hs_channels': [1],
