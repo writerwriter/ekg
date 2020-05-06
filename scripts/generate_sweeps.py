@@ -44,6 +44,9 @@ base_setting = {
         'final_nonlocal_nlayers':{
             'values': [0]
         },
+        'final_nfilters':{
+            'values': [8, 16, 32]
+        },
         'kernel_initializer':{
             'values': ['glorot_uniform'] # , 'he_normal']
         },
@@ -91,6 +94,7 @@ def generate_sweep(task, dataset, hs_ekg_setting):
         set_parameters(sweep, 'prediction_head', [True, False], search=True)
         set_parameters(sweep, 'prediction_nlayers', [2, 3, 4, 5], search=True)
         set_parameters(sweep, 'prediction_kernel_length', [5, 7, 13, 21, 35], search=True)
+        set_parameters(sweep, 'prediction_nfilters', [8, 16, 32], search=True)
 
         # data
         events = ['ADHF', 'Mortality'] + (['MI', 'Stroke', 'CVD'] if dataset == 'big_exam' else [])

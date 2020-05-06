@@ -165,9 +165,11 @@ if __name__ == '__main__':
         'final_nlayers': 2, # 4
         'final_kernel_length': 5,
         'final_nonlocal_nlayers': 0,
+        'final_nfilters': 8,
 
         'prediction_nlayers': 3,
         'prediction_kernel_length': 5,
+        'prediction_nfilters': 8,
 
         'batch_size': 128,
         'kernel_initializer': 'glorot_uniform',

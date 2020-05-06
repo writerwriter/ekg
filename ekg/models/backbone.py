@@ -92,7 +92,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
     if include_top: # final layers
         for i in range(config.final_nlayers):
             shortcut = output
-            output = Conv1D(8, config.final_kernel_length, activation='relu', padding='same',
+            output = Conv1D(config.final_nfilters, config.final_kernel_length, activation='relu', padding='same',
                                 kernel_initializer=config.kernel_initializer, name='final_conv_{}'.format(i))(output)
             output = BatchNormalization(name='final_bn_{}'.format(i))(output)
 
@@ -113,7 +113,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
                 head_output = output
                 for i in range(config.prediction_nlayers):
                     shortcut = head_output
-                    head_output = Conv1D(8, config.prediction_kernel_length, activation='relu', padding='same',
+                    head_output = Conv1D(config.prediction_nfilters, config.prediction_kernel_length, activation='relu', padding='same',
                                 kernel_initializer=config.kernel_initializer, name='pred_{}_conv_{}'.format(i_class, i))(head_output)
                     head_output = BatchNormalization(name='pred_{}_bn_{}'.format(i_class, i))(head_output)
 

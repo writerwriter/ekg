@@ -104,7 +104,7 @@ if __name__ == '__main__':
         for sweep in sweeps:
             pprint.pprint(sweep)
             wandb_project = 'ekg-' + sweep['name'].split('/')[0]
-            run_experiment(wandb_project, sweep, wandb_project, args.agents, args.n_runs)
+            run_experiment(wandb_project, sweep, wandb_project, args.agents, args.runs)
     else: # dryrun
         if args.verbose:
             pprint.pprint(sweeps)
