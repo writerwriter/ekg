@@ -162,14 +162,19 @@ if __name__ == '__main__':
         'ekg_nfilters': 1,
         'hs_nfilters': 1,
 
-        'final_nlayers': 4,
+        'final_nlayers': 2, # 4
         'final_kernel_length': 5,
         'final_nonlocal_nlayers': 0,
 
+        'prediction_nlayers': 3,
+        'prediction_kernel_length': 5,
+
         'batch_size': 128,
         'kernel_initializer': 'glorot_uniform',
-        'skip_connection': False,
+        'skip_connection': True,
         'crop_center': True,
+
+        'prediction_head': True,
 
         'radam': True,
 

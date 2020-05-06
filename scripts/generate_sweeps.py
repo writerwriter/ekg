@@ -45,7 +45,7 @@ base_setting = {
             'values': [0]
         },
         'kernel_initializer':{
-            'values': ['glorot_uniform', 'he_normal']
+            'values': ['glorot_uniform'] # , 'he_normal']
         },
         'skip_connection':{
             'values': [True, False]
@@ -59,9 +59,9 @@ base_setting = {
     }
 }
 
-def set_parameters(d, key, value):
+def set_parameters(d, key, value, search=False):
     d['parameters'][key] = {
-        'value': copy.deepcopy(value)
+        'values' if search else 'value': copy.deepcopy(value)
     }
 
 def generate_sweep(task, dataset, hs_ekg_setting):
@@ -87,6 +87,12 @@ def generate_sweep(task, dataset, hs_ekg_setting):
 
     # hazard_prediction
     if task == 'hazard_prediction':
+        # model
+        set_parameters(sweep, 'prediction_head', [True, False], search=True)
+        set_parameters(sweep, 'prediction_nlayers', [2, 3, 4, 5], search=True)
+        set_parameters(sweep, 'prediction_kernel_length', [5, 7, 13, 21, 35], search=True)
+
+        # data
         events = ['ADHF', 'Mortality'] + (['MI', 'Stroke', 'CVD'] if dataset == 'big_exam' else [])
         set_parameters(sweep, 'events', events)
         set_parameters(sweep, 'event_weights', [1 for _ in events])

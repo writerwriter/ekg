@@ -14,8 +14,6 @@ import better_exceptions; better_exceptions.hook()
 ENTITY = 'toosyou'
 
 TMUX_SERVER = libtmux.Server()
-NUM_AGENT = 4
-RUN_PER_AGENT = 50
 
 def create_sweep(wandb_project, sweep_config):
     wandb_project = wandb_project
@@ -34,11 +32,11 @@ def run_cmds_in_tmux(session_name, cmds):
     window.select_layout('even-vertical')
     return session
 
-def run_sweep_in_tmux(session_name, sweep_id):
+def run_sweep_in_tmux(session_name, sweep_id, n_agents, n_runs):
     cmds = list()
-    for i in range(NUM_AGENT):
+    for i in range(n_agents):
         cmd = 'CUDA_VISIBLE_DEVICES="{}" pipenv run wandb agent --count {} {}'.format(
-                i % 2, RUN_PER_AGENT, sweep_id)
+                i % 2, n_runs // n_agents, sweep_id)
         cmds.append(cmd)
     return run_cmds_in_tmux(session_name, cmds)
 
@@ -61,10 +59,10 @@ def wait_for_finish(session):
                 session.kill_session()
                 sys.exit(0)
 
-def run_experiment(wandb_project, sweep_config, session_name):
+def run_experiment(wandb_project, sweep_config, session_name, n_agents, n_runs):
     sweep_id = create_sweep(wandb_project, sweep_config)
 
-    session = run_sweep_in_tmux(session_name, sweep_id)
+    session = run_sweep_in_tmux(session_name, sweep_id, n_agents, n_runs)
     wait_for_finish(session)
     session.kill_session()
 
@@ -75,6 +73,10 @@ def run_experiment(wandb_project, sweep_config, session_name):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Run both abnormal detection and hazard prediction experiments with all possible setting.')
+    parser.add_argument('-r', '--runs', type=int, nargs='?', default=200,
+                        help='Total number of runs for all agents to run.')
+    parser.add_argument('-a', '--agents', type=int, nargs='?', default=4,
+                        help='Number of agents to run experiments')
     parser.add_argument('-f', '--filters', type=str, nargs='*',
                         help='Only run sweeps with certain strings in the sweep name.')
     parser.add_argument('-e', '--excepts', type=str, nargs='*',
@@ -102,7 +104,7 @@ if __name__ == '__main__':
         for sweep in sweeps:
             pprint.pprint(sweep)
             wandb_project = 'ekg-' + sweep['name'].split('/')[0]
-            run_experiment(wandb_project, sweep, wandb_project)
+            run_experiment(wandb_project, sweep, wandb_project, args.agents, args.n_runs)
     else: # dryrun
         if args.verbose:
             pprint.pprint(sweeps)

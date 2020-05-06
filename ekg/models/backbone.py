@@ -2,7 +2,6 @@ import tensorflow.keras.backend as K
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Lambda, BatchNormalization, GlobalAveragePooling1D
 from tensorflow.keras.layers import Conv1D, MaxPooling1D, Dense, Add, Concatenate
-# from keras.layers import Maximum
 
 from ..layers import LeftCropLike, CenterCropLike
 from ..layers.sincnet import SincConv1D
@@ -16,12 +15,10 @@ def _ekg_branch(input_data, nlayers, nfilters, kernel_length, kernel_initializer
                         kernel_initializer=kernel_initializer, name='ekg_branch_conv_{}'.format(i))(ekg)
         ekg = BatchNormalization(name='ekg_branch_bn_{}'.format(i))(ekg)
 
-        if skip_connection:
-            shortcut = Conv1D(nfilters, 1, activation='relu', padding='same',
-                            kernel_initializer=kernel_initializer, name='ekg_branch_skip_bottleneck_{}'.format(i))(shortcut)
+        if i != 0 and skip_connection:
             ekg = Add(name='ekg_branch_skip_merge_{}'.format(i))([ekg, shortcut])
 
-        ekg = MaxPooling1D(3, padding='same', name='ekg_branch_maxpool_{}'.format(i))(ekg)
+        ekg = MaxPooling1D(2, padding='same', name='ekg_branch_maxpool_{}'.format(i))(ekg)
 
     return ekg
 
@@ -37,12 +34,10 @@ def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, h
                         kernel_initializer=kernel_initializer, name='{}conv_{}'.format(name_prefix, i+1))(hs)
         hs = BatchNormalization(name='{}bn_{}'.format(name_prefix, i+1))(hs)
 
-        if skip_connection:
-            shortcut = Conv1D(hs_nfilters, 1, activation='relu', padding='same',
-                        kernel_initializer=kernel_initializer, name='{}skip_bottleneck_{}'.format(name_prefix, i+1))(shortcut)
+        if i != 0 and skip_connection:
             hs = Add(name='{}skip_merge_{}'.format(name_prefix, i+1))([hs, shortcut])
 
-        hs = MaxPooling1D(3, padding='same', name='{}maxpool_{}'.format(name_prefix, i+1))(hs)
+        hs = MaxPooling1D(2, padding='same', name='{}maxpool_{}'.format(name_prefix, i+1))(hs)
 
     return hs
 
@@ -101,20 +96,41 @@ def backbone(config, include_top=False, classification=True, classes=2):
                                 kernel_initializer=config.kernel_initializer, name='final_conv_{}'.format(i))(output)
             output = BatchNormalization(name='final_bn_{}'.format(i))(output)
 
-            if config.skip_connection:
-                if i == 0:
-                    shortcut = Conv1D(8, 1, activation='linear', padding='same',
-                                        kernel_initializer=config.kernel_initializer, name='final_shortcut_conv')(shortcut)
+            if i != 0 and config.skip_connection:
                 output = Add(name='final_skip_merge_{}'.format(i))([output, shortcut])
 
             if i >= config.final_nlayers - config.final_nonlocal_nlayers: # the final 'final_nonlocal_nlayers' layers
                 output = non_local_block(output, compression=2, mode='embedded')
 
-            if i != config.final_nlayers-1: # not the final output
+            if i != config.final_nlayers-1 or config.prediction_head: # not the final output
                 output = MaxPooling1D(2, padding='same', name='final_maxpool_{}'.format(i))(output)
+        
+        # prediction head setup
+        if hasattr(config, 'prediction_head') and config.prediction_head:
+            outputs = list()
 
-        output = GlobalAveragePooling1D()(output)
-        output = Dense(classes, activation='softmax' if classification else 'linear')(output) # classification or regression
+            for i_class in range(classes):
+                head_output = output
+                for i in range(config.prediction_nlayers):
+                    shortcut = head_output
+                    head_output = Conv1D(8, config.prediction_kernel_length, activation='relu', padding='same',
+                                kernel_initializer=config.kernel_initializer, name='pred_{}_conv_{}'.format(i_class, i))(head_output)
+                    head_output = BatchNormalization(name='pred_{}_bn_{}'.format(i_class, i))(head_output)
+
+                    if i != 0 and config.skip_connection:
+                        head_output = Add(name='pred_{}_skip_{}'.format(i_class, i))([head_output, shortcut])
+
+                    if i != config.prediction_nlayers - 1: # not the last layer
+                        head_output = MaxPooling1D(2, padding='same', name='pred_{}_maxpool_{}'.format(i_class, i))(head_output)
+
+                head_output = GlobalAveragePooling1D(name='pred_{}_gap'.format(i_class))(head_output)
+                head_output = Dense(1, activation='linear', name='pred_{}_output'.format(i_class))(head_output)
+                outputs.append(head_output)
+            
+            output = Concatenate(axis=-1, name='output')(outputs)
+        else:
+            output = GlobalAveragePooling1D(name='output_gap')(output)
+            output = Dense(classes, activation='softmax' if classification else 'linear', name='output')(output) # classification or regression
 
     model = Model(total_input, output)
     return model

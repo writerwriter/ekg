@@ -91,13 +91,20 @@ def get_KM_plot(train_pred, test_pred, test_true, event_name):
     
     # plot KM curve
     kmf = KaplanMeierFitter()
-    kmf.fit(high_risk_st, high_risk_cs, label='high risk')
-    a1 = kmf.plot(figsize=(20, 10), title='{} KM curve, logrank p-value: {}'.format(event_name, p_value))
+    a1 = None
 
-    kmf.fit(low_risk_st, low_risk_cs, label='low risk')
-    kmf.plot(ax=a1)
+    if high_risk_cs.shape[0] != 0:
+        kmf.fit(high_risk_st, high_risk_cs, label='high risk')
+        a1 = kmf.plot(figsize=(20, 10), title='{} KM curve, logrank p-value: {}'.format(event_name, p_value))
+    
+    if low_risk_cs.shape[0] != 0:
+        kmf.fit(low_risk_st, low_risk_cs, label='low risk')
+        if a1 is not None:
+            kmf.plot(ax=a1)
+        else:
+            kmf.plot(figsize=(20, 10), title='{} KM curve, logrank p-value: {}'.format(event_name, p_value))
+
     plt.tight_layout()
-
     return plt
 
 def get_survival_scatter(y_pred, cs_true, st_true, event_name):
