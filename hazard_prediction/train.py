@@ -156,11 +156,14 @@ if __name__ == '__main__':
 
         'branch_nlayers': 1,
 
-        'ekg_kernel_length': 35,
+        'ekg_kernel_length': 13,
         'hs_kernel_length': 35,
 
-        'final_nlayers': 7,
-        'final_kernel_length': 13,
+        'ekg_nfilters': 1,
+        'hs_nfilters': 1,
+
+        'final_nlayers': 4,
+        'final_kernel_length': 5,
         'final_nonlocal_nlayers': 0,
 
         'batch_size': 128,
@@ -172,8 +175,8 @@ if __name__ == '__main__':
 
         # data
         'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD'
-        'event_weights': [1, 0.5],
-        'censoring_limit': 99999, # 99999 if no limit specified
+        'event_weights': [1, 1],
+        'censoring_limit': 400, # 99999 if no limit specified
 
         'output_l1_regularizer': 0, # 0 if disable
         'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
@@ -190,6 +193,7 @@ if __name__ == '__main__':
         'audicor_10s_only_train': False,
 
         'downsample': 'direct', # average
+        'with_normal_subjects': False,
 
         'tf': '2.2',
 

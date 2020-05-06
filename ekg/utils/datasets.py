@@ -24,6 +24,7 @@ class DatasetLoader():
         assert hasattr(self.config, 'n_hs_channels'), 'n_hs_channels doesn\'t exist in wandb config.'
         assert hasattr(self.config, 'sampling_rate'), 'sampling_rate doesn\'t exist in wandb config.'
         assert hasattr(self.config, 'downsample'), 'downsample doesn\'t exist in wandb config.'
+        assert hasattr(self.config, 'with_normal_subjects'), 'with_normal_patient doesn\'t exist in wandb config.'
 
         self.channel_set = self.get_channel_set()
 
@@ -79,7 +80,10 @@ class DatasetLoader():
             X_shape = [shape for shape in self.abnormal_X.shape[1:]] # [n_samples, n_channels]
             y_shape = [shape for shape in self.abnormal_y.shape[1:]] # [?]
 
-            train_set = [np.append(self.abnormal_X, self.normal_X, axis=0), np.append(self.abnormal_y, self.normal_y, axis=0)]
+            if self.config.with_normal_subjects:
+                train_set = [np.append(self.abnormal_X, self.normal_X, axis=0), np.append(self.abnormal_y, self.normal_y, axis=0)]
+            else: # only abnormal subjects
+                train_set = [self.abnormal_X, self.abnormal_y]
             valid_set = [np.empty([0]+X_shape), np.empty([0]+y_shape)]
             test_set = [np.empty([0]+X_shape), np.empty([0]+y_shape)]
             return [train_set, valid_set, test_set]
@@ -88,12 +92,15 @@ class DatasetLoader():
         abnormal_training_set, abnormal_valid_set, abnormal_test_set  = subject_split(self.abnormal_X, self.abnormal_y, self.abnormal_subject_id, rs)
 
         # do normal split by normal subject ID
-        normal_training_set, normal_valid_set, normal_test_set = subject_split(self.normal_X, self.normal_y, self.normal_subject_id, rs)
+        if self.config.with_normal_subjects:
+            normal_training_set, normal_valid_set, normal_test_set = subject_split(self.normal_X, self.normal_y, self.normal_subject_id, rs)
 
-        # combine
-        train_set = combine(normal_training_set, abnormal_training_set)
-        valid_set = combine(normal_valid_set, abnormal_valid_set)
-        test_set = combine(normal_test_set, abnormal_test_set)
+            # combine
+            train_set = combine(normal_training_set, abnormal_training_set)
+            valid_set = combine(normal_valid_set, abnormal_valid_set)
+            test_set = combine(normal_test_set, abnormal_test_set)
+        else: # only abnormal subjects
+            train_set, valid_set, test_set = abnormal_training_set, abnormal_valid_set, abnormal_test_set
 
         return [train_set, valid_set, test_set]
 
