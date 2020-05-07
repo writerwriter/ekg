@@ -201,7 +201,8 @@ if __name__ == '__main__':
         'audicor_10s_only_train': False,
 
         'downsample': 'direct', # average
-        'with_normal_subjects': False,
+        'with_normal_subjects': True,
+        'normal_subjects_only_train': True,
 
         'tf': '2.2',
 

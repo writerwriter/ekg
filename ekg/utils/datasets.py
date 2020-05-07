@@ -74,6 +74,9 @@ class DatasetLoader():
             train_set, valid_set, test_set
         '''
         def combine(set1, set2):
+            if set1 is None or set2 is None: # return the not-None set if any of the sets is None
+                return set1 if set1 is not None else set2
+
             return [np.append(set1[i], set2[i], axis=0) for i in range(2)]
 
         if self.only_train:
@@ -93,7 +96,11 @@ class DatasetLoader():
 
         # do normal split by normal subject ID
         if self.config.with_normal_subjects:
-            normal_training_set, normal_valid_set, normal_test_set = subject_split(self.normal_X, self.normal_y, self.normal_subject_id, rs)
+            if self.config.normal_subjects_only_train:
+                normal_training_set = [self.normal_X, self.normal_y]
+                normal_valid_set, normal_test_set = None, None
+            else:
+                normal_training_set, normal_valid_set, normal_test_set = subject_split(self.normal_X, self.normal_y, self.normal_subject_id, rs)
 
             # combine
             train_set = combine(normal_training_set, abnormal_training_set)
