@@ -175,6 +175,7 @@ if __name__ == '__main__':
         'kernel_initializer': 'glorot_uniform',
         'skip_connection': True,
         'crop_center': True,
+        'se_block': True,
 
         'prediction_head': True,
 

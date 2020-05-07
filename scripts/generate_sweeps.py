@@ -56,6 +56,9 @@ base_setting = {
         'crop_center':{
             'values': [True]
         },
+        'se_block':{
+            'values': [True, False]
+        },
         'radam':{
             'values': [True, False]
         }

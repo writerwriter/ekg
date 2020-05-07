@@ -1,4 +1,5 @@
 from tensorflow import keras
+from tensorflow.keras.layers import GlobalAveragePooling1D, Reshape, Dense, Permute, multiply
 import tensorflow.keras.backend as K
 
 class LeftCropLike(keras.layers.Layer):
@@ -32,3 +33,16 @@ class PaddingLike(keras.layers.Layer):
 
     def compute_output_shape(self, input_shape):
         return input_shape[1]
+
+def squeeze_excite_block(tensor, ratio=16):
+    init = tensor
+    filters = init._shape_val[-1]
+    se_shape = (1, filters)
+
+    se = GlobalAveragePooling1D()(init)
+    se = Reshape(se_shape)(se)
+    se = Dense(filters // ratio, activation='relu', kernel_initializer='he_normal', use_bias=False)(se)
+    se = Dense(filters, activation='sigmoid', kernel_initializer='he_normal', use_bias=False)(se)
+
+    x = multiply([init, se])
+    return x

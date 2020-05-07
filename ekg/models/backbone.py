@@ -4,16 +4,18 @@ from tensorflow.keras.layers import Input, Lambda, BatchNormalization, GlobalAve
 from tensorflow.keras.layers import Conv1D, MaxPooling1D, Dense, Add, Concatenate
 
 from ..layers import LeftCropLike, CenterCropLike
+from ..layers import squeeze_excite_block
 from ..layers.sincnet import SincConv1D
 from ..layers.non_local import non_local_block
 
-def _ekg_branch(input_data, nlayers, nfilters, kernel_length, kernel_initializer, skip_connection):
+def _ekg_branch(input_data, nlayers, nfilters, kernel_length, kernel_initializer, se_block, skip_connection):
     ekg = input_data
     for i in range(nlayers):
         shortcut = ekg
         ekg = Conv1D(nfilters, kernel_length, activation='relu', padding='same',
                         kernel_initializer=kernel_initializer, name='ekg_branch_conv_{}'.format(i))(ekg)
         ekg = BatchNormalization(name='ekg_branch_bn_{}'.format(i))(ekg)
+        if se_block: ekg = squeeze_excite_block(ekg)
 
         if i != 0 and skip_connection:
             ekg = Add(name='ekg_branch_skip_merge_{}'.format(i))([ekg, shortcut])
@@ -22,7 +24,7 @@ def _ekg_branch(input_data, nlayers, nfilters, kernel_length, kernel_initializer
 
     return ekg
 
-def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, hs_nfilters, sampling_rate, nlayers, kernel_length, kernel_initializer, skip_connection, name_prefix=''):
+def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, hs_nfilters, sampling_rate, nlayers, kernel_length, kernel_initializer, se_block, skip_connection, name_prefix=''):
     hs = input_data
     sincconv_filter_length = sincconv_filter_length - (sincconv_filter_length+1) % 2
     hs = SincConv1D(sincconv_nfilters, sincconv_filter_length, sampling_rate, name='{}sincconv'.format(name_prefix))(hs)
@@ -33,6 +35,7 @@ def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, h
         hs = Conv1D(hs_nfilters, kernel_length, activation='relu', padding='same',
                         kernel_initializer=kernel_initializer, name='{}conv_{}'.format(name_prefix, i+1))(hs)
         hs = BatchNormalization(name='{}bn_{}'.format(name_prefix, i+1))(hs)
+        if se_block: hs = squeeze_excite_block(hs)
 
         if i != 0 and skip_connection:
             hs = Add(name='{}skip_merge_{}'.format(name_prefix, i+1))([hs, shortcut])
@@ -53,7 +56,8 @@ def backbone(config, include_top=False, classification=True, classes=2):
                             config.branch_nlayers,
                             config.ekg_nfilters,
                             config.ekg_kernel_length, 
-                            config.kernel_initializer, 
+                            config.kernel_initializer,
+                            config.se_block, 
                             config.skip_connection)
 
     # heart sound branch
@@ -73,6 +77,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
                                                         config.sampling_rate,
                                                         config.branch_nlayers,
                                                         config.hs_kernel_length, config.kernel_initializer,
+                                                        config.se_block,
                                                         config.skip_connection, name_prefix='hs_branch_{}_'.format(i)))
         if config.n_hs_channels >= 2:
             hs = Add(name='hs_merge')(hs_outputs)
@@ -95,6 +100,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
             output = Conv1D(config.final_nfilters, config.final_kernel_length, activation='relu', padding='same',
                                 kernel_initializer=config.kernel_initializer, name='final_conv_{}'.format(i))(output)
             output = BatchNormalization(name='final_bn_{}'.format(i))(output)
+            if config.se_block: output = squeeze_excite_block(output)
 
             if i != 0 and config.skip_connection:
                 output = Add(name='final_skip_merge_{}'.format(i))([output, shortcut])
@@ -116,6 +122,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
                     head_output = Conv1D(config.prediction_nfilters, config.prediction_kernel_length, activation='relu', padding='same',
                                 kernel_initializer=config.kernel_initializer, name='pred_{}_conv_{}'.format(i_class, i))(head_output)
                     head_output = BatchNormalization(name='pred_{}_bn_{}'.format(i_class, i))(head_output)
+                    if config.se_block: head_output = squeeze_excite_block(head_output)
 
                     if i != 0 and config.skip_connection:
                         head_output = Add(name='pred_{}_skip_{}'.format(i_class, i))([head_output, shortcut])
