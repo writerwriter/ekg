@@ -22,6 +22,7 @@ def negative_hazard_log_likelihood(event_weights, output_l1=0, output_l2=0):
             uncensored_likelihood = sorted_event_risk - log_risk
             censored_likelihood = uncensored_likelihood * sorted_event_cs
             neg_likelihood = -K.sum(censored_likelihood)
+            neg_likelihood = neg_likelihood / (K.sum(sorted_event_cs) + K.epsilon()) # normalization
 
             return neg_likelihood
 
