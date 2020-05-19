@@ -200,6 +200,8 @@ if __name__ == '__main__':
         'audicor_10s_hs_channels': [1],
         'audicor_10s_only_train': False,
 
+        'include_info': True, # sex, age, height, weight, BMI for audicor_10s
+
         'downsample': 'direct', # average
         'with_normal_subjects': True,
         'normal_subjects_only_train': True,

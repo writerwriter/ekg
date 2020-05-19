@@ -80,11 +80,15 @@ class HazardAudicor10sLoader(Audicor10sLoader):
         y = np.zeros((self.abnormal_X.shape[0] // len(self.channel_set), len(self.config.events), 2))
 
         df = pd.read_csv(os.path.join(self.datadir, 'abnormal_event.csv'))
-        df.filename = df.filename.str.lower()
+        df.filename = df.filename.str.lower()   # make sure both SCREENING / screening work
 
         # load filenames of abnormal data
         filenames = np.load(os.path.join(self.datadir, 'abnormal_filenames.npy'))
         filenames = np.vectorize(lambda fn: fn.split('/')[-1].lower())(filenames)
+        filenames = np.vectorize(lambda fn: fn.replace('_v_', '_v1_'))(filenames)               # fix FEMH020_V_Snapshot.txt
+        filenames = np.vectorize(lambda fn: fn.replace('_screen_', '_screening_'))(filenames)   # fix FEMH026_SCREEN_Snapshot.txt
+        filenames = np.vectorize(lambda fn: fn.replace('_screeing_', '_screening_'))(filenames) # fix TVGH066_SCREEING_Snapshot.txt
+
         filename_df = pd.DataFrame(filenames, columns=['filename'])
 
         # use the filename to get cs and st

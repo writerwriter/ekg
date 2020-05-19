@@ -80,7 +80,7 @@ def read_data(normal_dir, abnormal_dir, do_bandpass_filter, filter_lowcut, filte
     
     return normal, abnormal, np.array(normal_filenames), np.array(abnormal_filenames)
 
-def generate_survival_data(old_label_filename, new_label_filename):
+def generate_survival_data(old_label_filename, new_label_filename, label_dir):
     def merge(old_df, new_df):
         # generate filename attribute
         old_df['filename'] = old_df.apply(lambda row: row['SubjectID'] + '_' + 
@@ -217,9 +217,108 @@ def generate_survival_data(old_label_filename, new_label_filename):
         merged_df[['{}_survival_time'.format(new_event_name), '{}_censoring_status'.format(new_event_name)]] = merged_df.apply(generate_survival_data, axis=1)
         return merged_df
 
-    # read both files
+    def append_info(df, sex_df, height_df):
+        def interpolation(row):
+            def interp(A, B, alpha, beta):
+                return A + (B-A) * (alpha / (alpha-beta))
+                    
+            for to_fix in ['height', 'weight']:
+                if row[to_fix] == row[to_fix]: # is not nan, no need to fix
+                    continue
+                
+                # find the two closest points with the same subject id
+                subject = df[(df.subject_id == row.subject_id) & 
+                                (df.filename != row.filename) &
+                                (~df[to_fix].isnull())]
+
+                get_delta_time_fn = lambda md:(datetime.strptime(row.measurement_date, '%Y/%m/%d') - datetime.strptime(md, '%Y/%m/%d')).days
+                delta_time = subject.measurement_date.apply(get_delta_time_fn).values
+                
+                # find left and right
+                left, right = [np.nan, -np.Inf], [np.nan, np.Inf]
+                for i, dt in enumerate(delta_time):
+                    if dt <= 0 and dt > left[1]:
+                        left = i, dt
+                        
+                    if dt > 0 and dt < right[1]:
+                        right = i, dt
+                        
+                if left[1] == -np.Inf and right[1] == np.Inf: # cannot do interpolation
+                    continue
+                if left[1] == -np.Inf:
+                    row[to_fix] = subject.iloc[right[0]][to_fix]
+                    continue
+                if right[1] == np.Inf:
+                    row[to_fix] = subject.iloc[left[0]][to_fix]
+                    continue
+                
+                closest_indices = np.abs(delta_time).argsort()[:2]
+                
+                if closest_indices.shape[0] == 1:
+                    # append the closest point
+                    row[to_fix] = subject.iloc[closest_indices][to_fix].iloc[0]
+                    continue
+                if closest_indices.shape[0] == 0:
+                    continue
+                
+                A = subject.iloc[left[0]][to_fix]
+                B = subject.iloc[right[0]][to_fix]
+                alpha, beta = left[1], right[1]
+                row[to_fix] = interp(A, B, alpha, beta)
+                
+            return row
+
+        def cal_age(row):
+            isnan = lambda X: X != X
+            if not isnan(row.measurement_date) and not isnan(row.birthday):
+                return (datetime.strptime(row.measurement_date, '%Y/%m/%d') - datetime.strptime(row.birthday, '%m/%d/%Y')).days // 365
+            return np.nan
+
+        # sex and age
+        # merge by subject id
+        df = df.merge(sex_df[['Subject ID', 'Study_sex', 'Study_BD']], left_on='subject_id', right_on='Subject ID', how='left')
+
+        # rename columns
+        df = df.rename(columns={
+            'Study_sex': 'sex',
+            'Study_BD': 'birthday'
+        }).drop('Subject ID', axis=1) # and drop unnecessary columns
+
+        # calculate age
+        df.loc[321, 'birthday'] = '12/01/1928' # fix typo
+        df['age'] = df.apply(cal_age, axis=1)
+
+        # preprocessing height_df
+        height_df['filename'] = height_df.apply(lambda row: row['Subject ID'] + ('_SCREENING_Snapshot.txt' if row['High_Weight_visit'] == 888 else '_V{:d}_Snapshot.txt'.format(row['High_Weight_visit'])), axis=1)
+
+        # merge by filename
+        df = df.merge(height_df[['filename', 'Height_Weight_Height', 'Height_Weight_Weight', 'Height_Weight_BMI']], left_on='filename', right_on='filename', how='left')
+
+        # replace NIL with nan
+        df.Height_Weight_BMI = df.Height_Weight_BMI.replace('NIL', np.nan)
+
+        # rename columns
+        df = df.rename(columns={
+            'Height_Weight_Height': 'height',
+            'Height_Weight_Weight': 'weight',
+            'Height_Weight_BMI': 'BMI'
+        })
+
+        # drop dup filenames
+        df.drop_duplicates(subset='filename', keep='first', inplace=True)
+        df = df.apply(interpolation, axis=1) # do height & weight interpolation
+
+        # re-calculate BMI
+        df['BMI'] = df.weight / (df.height**2 * 0.0001)
+        return df
+
+    # read all files
     old_df, new_df = pd.read_excel(old_label_filename), pd.read_excel(new_label_filename)
     new_followup_df = pd.read_excel(new_label_filename, sheet_name=3) # the third sheet which has follow up data
+
+    sex_df = pd.read_excel(os.path.join(label_dir, 'HF01. Demongraphy.xlsx'), skiprows=[0, 1, 3]) # sex and age
+    height_df = pd.read_excel(os.path.join(label_dir, 'HF04. Height and Weight.xlsx'), skiprows=[0, 1, 3]) # height, weight and BMI
+
     # fix FEMH012's CV_death possible mistake
     new_followup_df.loc[new_followup_df['Subject ID'] == 'FEMH012', 'End_Point_CV_death_DT'] = '10/01/2019'
 
@@ -241,16 +340,21 @@ def generate_survival_data(old_label_filename, new_label_filename):
     for en in ['CVD', 'Mortality']:
         merged_df = generate_event_data(merged_df, en)
 
+    # append sex, age, height, weight, BMI
+    merged_df = append_info(merged_df, sex_df, height_df)
+
     return merged_df
 
 if __name__ == '__main__':
     # parse config
     NORMAL_DIR, ABNORMAL_DIR = config['Audicor_10s']['normal_dir'], config['Audicor_10s']['abnormal_dir']
     OUTPUT_DIR = config['Audicor_10s']['output_dir']
+    LABEL_DIR = config['Audicor_10s']['label_dir']
     OLD_LABEL_FILENAME, NEW_LABEL_FILENAME = config['Audicor_10s']['label_filenames'].split(', ')
     DO_BANDPASS_FILTER = config['Audicor_10s'].getboolean('do_bandpass_filter')
     FILTER_LOWCUT, FILTER_HIGHCUT = int(config['Audicor_10s']['bandpass_filter_lowcut']), int(config['Audicor_10s']['bandpass_filter_highcut'])
 
+    '''
     normal_X, abnormal_X, normal_filenames, abnormal_filenames = read_data(NORMAL_DIR, 
                                                                     ABNORMAL_DIR, 
                                                                     DO_BANDPASS_FILTER, 
@@ -263,6 +367,7 @@ if __name__ == '__main__':
 
     np.save(os.path.join(OUTPUT_DIR, 'abnormal_X.npy'), abnormal_X)
     np.save(os.path.join(OUTPUT_DIR, 'abnormal_filenames.npy'), abnormal_filenames)
+    '''
 
-    abnormal_event_df = generate_survival_data(OLD_LABEL_FILENAME, NEW_LABEL_FILENAME)
+    abnormal_event_df = generate_survival_data(OLD_LABEL_FILENAME, NEW_LABEL_FILENAME, LABEL_DIR)
     abnormal_event_df.to_csv(os.path.join(OUTPUT_DIR, 'abnormal_event.csv'), index=False)

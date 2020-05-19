@@ -24,7 +24,7 @@ class DatasetLoader():
         assert hasattr(self.config, 'n_hs_channels'), 'n_hs_channels doesn\'t exist in wandb config.'
         assert hasattr(self.config, 'sampling_rate'), 'sampling_rate doesn\'t exist in wandb config.'
         assert hasattr(self.config, 'downsample'), 'downsample doesn\'t exist in wandb config.'
-        assert hasattr(self.config, 'with_normal_subjects'), 'with_normal_patient doesn\'t exist in wandb config.'
+        assert hasattr(self.config, 'with_normal_subjects'), 'with_normal_subjects doesn\'t exist in wandb config.'
 
         self.channel_set = self.get_channel_set()
 
