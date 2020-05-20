@@ -12,10 +12,15 @@ def preprocessing(dataloader):
     for i, event_name in enumerate(dataloader.config.events):
         remove_mask = np.logical_or(remove_mask, dataloader.abnormal_y[:, i, 0] == -1)
 
+    if dataloader.config.include_info:
+        for i, info in enumerate(dataloader.config.infos):
+            remove_mask = np.logical_or(remove_mask, dataloader.abnormal_info[:, i] == -1)
+
     keep_mask = ~remove_mask
     dataloader.abnormal_X = dataloader.abnormal_X[keep_mask]
     dataloader.abnormal_y = dataloader.abnormal_y[keep_mask]
     dataloader.abnormal_subject_id = dataloader.abnormal_subject_id[keep_mask]
+    dataloader.abnormal_info = dataloader.abnormal_info[keep_mask]
 
     # limit censoring for every event
     for i, event_name in enumerate(dataloader.config.events):
@@ -70,6 +75,33 @@ class HazardBigExamLoader(BigExamLoader):
         return datasets
 
 class HazardAudicor10sLoader(Audicor10sLoader):
+    def load_abnormal_filenames(self):
+        '''Return fixed abnormal filenames as DataFrame
+        '''
+        filenames = np.load(os.path.join(self.datadir, 'abnormal_filenames.npy'))
+        filenames = np.vectorize(lambda fn: fn.split('/')[-1].lower())(filenames)
+        filenames = np.vectorize(lambda fn: fn.replace('_v_', '_v1_'))(filenames)               # fix FEMH020_V_Snapshot.txt
+        filenames = np.vectorize(lambda fn: fn.replace('_screen_', '_screening_'))(filenames)   # fix FEMH026_SCREEN_Snapshot.txt
+        filenames = np.vectorize(lambda fn: fn.replace('_screeing_', '_screening_'))(filenames) # fix TVGH066_SCREEING_Snapshot.txt
+
+        return pd.DataFrame(filenames, columns=['filename'])
+
+    def load_abnormal_info(self):
+        df = pd.read_csv(os.path.join(self.datadir, 'abnormal_event.csv'))
+        df.filename = df.filename.str.lower()   # make sure both SCREENING / screening work
+
+        # load filenames of abnormal data
+        filename_df = self.load_abnormal_filenames()
+
+        # use the filename to get info
+        merged_df = pd.merge(filename_df, 
+                                df[['filename'] + self.config.infos],
+                                left_on='filename', right_on='filename',
+                                how='left')
+        merged_df = merged_df.replace(np.nan, -1) # replace nan with -1
+        infos = merged_df[self.config.infos].values
+        return infos
+
     def load_abnormal_y(self):
         '''
         Output:
@@ -83,13 +115,7 @@ class HazardAudicor10sLoader(Audicor10sLoader):
         df.filename = df.filename.str.lower()   # make sure both SCREENING / screening work
 
         # load filenames of abnormal data
-        filenames = np.load(os.path.join(self.datadir, 'abnormal_filenames.npy'))
-        filenames = np.vectorize(lambda fn: fn.split('/')[-1].lower())(filenames)
-        filenames = np.vectorize(lambda fn: fn.replace('_v_', '_v1_'))(filenames)               # fix FEMH020_V_Snapshot.txt
-        filenames = np.vectorize(lambda fn: fn.replace('_screen_', '_screening_'))(filenames)   # fix FEMH026_SCREEN_Snapshot.txt
-        filenames = np.vectorize(lambda fn: fn.replace('_screeing_', '_screening_'))(filenames) # fix TVGH066_SCREEING_Snapshot.txt
-
-        filename_df = pd.DataFrame(filenames, columns=['filename'])
+        filename_df = self.load_abnormal_filenames()
 
         # use the filename to get cs and st
         for i, event_name in enumerate(self.config.events):

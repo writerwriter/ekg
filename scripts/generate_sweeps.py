@@ -70,9 +70,9 @@ def set_parameters(d, key, value, search=False):
         'values' if search else 'value': copy.deepcopy(value)
     }
 
-def generate_sweep(task, dataset, hs_ekg_setting):
+def generate_sweep(task, dataset, hs_ekg_setting, info_setting):
     sweep = copy.deepcopy(base_setting)
-    sweep['name'] = '{}/{}/{}'.format(task, dataset, hs_ekg_setting)
+    sweep['name'] = '{}/{}/{}/{}'.format(task, dataset, hs_ekg_setting, info_setting)
     sweep['program'] = './{}/train.py'.format(task)
 
     set_parameters(sweep, 'datasets', [dataset] if 'hybrid' not in dataset else ['audicor_10s', 'big_exam'])
@@ -105,6 +105,10 @@ def generate_sweep(task, dataset, hs_ekg_setting):
         set_parameters(sweep, 'event_weights', [1 for _ in events])
         set_parameters(sweep, 'censoring_limit', 400 if dataset == 'hybrid/audicor_as_test' else 99999)
         set_parameters(sweep, 'batch_size', 64)
+
+        set_parameters(sweep, 'include_info', info_setting == 'with_info')
+        set_parameters(sweep, 'info_nlayers', [1, 2, 3, 4, 5], search=True)
+        set_parameters(sweep, 'info_units', [8, 16, 32, 64], search=True)
     
     return sweep
 
@@ -113,10 +117,12 @@ def get_all_sweeps():
     tasks = ['abnormal_detection', 'hazard_prediction']
     datasets = ['audicor_10s', 'big_exam', 'hybrid/audicor_as_test', 'hybrid/both_as_test']
     hs_ekg_settings = ['only_hs', 'only_ekg', 'whole']
+    info_settings = ['with_info', 'without_info']
 
     for task in tasks:
         for dataset in datasets:
             for hs_ekg_setting in hs_ekg_settings:
-                sweep = generate_sweep(task, dataset, hs_ekg_setting)
-                sweeps.append(sweep)
+                for info_setting in info_settings:
+                    sweep = generate_sweep(task, dataset, hs_ekg_setting, info_setting)
+                    sweeps.append(sweep)
     return sweeps

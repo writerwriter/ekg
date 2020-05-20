@@ -63,7 +63,6 @@ class DataAugmenter:
 
 class BaseDataGenerator:
     def __init__(self, dataloaders, wandb_config, preprocessing_fn, **kwargs):
-
         self.dataloaders = dataloaders
         self.config = wandb_config
         self.preprocessing_per_dataloader = preprocessing_fn
@@ -81,19 +80,27 @@ class BaseDataGenerator:
         return
 
     @staticmethod
-    def normalize(X, means_and_stds=None):
-        if means_and_stds is None:
-            means = [ X[..., i].mean(dtype=np.float32) for i in range(X.shape[-1]) ]
-            stds = [ X[..., i].std(dtype=np.float32) for i in range(X.shape[-1]) ]
-        else:
-            means = means_and_stds[0]
-            stds = means_and_stds[1]
+    def normalize(X, means_and_stds=None, include_info=False):
+        def norm(xi, msi):
+            if msi is None:
+                means = [ xi[..., i].mean(dtype=np.float32) for i in range(xi.shape[-1]) ]
+                stds = [ xi[..., i].std(dtype=np.float32) for i in range(xi.shape[-1]) ]
+            else:
+                means = msi[0]
+                stds = msi[1]
 
-        normalized_X = np.zeros_like(X, dtype=np.float32)
-        for i in range(X.shape[-1]):
-            normalized_X[..., i] = X[..., i].astype(np.float32) - means[i]
-            normalized_X[..., i] = normalized_X[..., i] / stds[i]
-        return normalized_X, (means, stds)
+            normalized_X = np.zeros_like(xi, dtype=np.float32)
+            for i in range(xi.shape[-1]):
+                normalized_X[..., i] = xi[..., i].astype(np.float32) - means[i]
+                normalized_X[..., i] = normalized_X[..., i] / stds[i]
+            return normalized_X, [means, stds]
+
+        if include_info:
+            ekg_hs, info = X[0], X[1]
+            normalized_ekg_hs, ekg_hs_means_and_stds = norm(ekg_hs, means_and_stds[0] if means_and_stds is not None else None)
+            normalized_info, info_means_and_stds = norm(info, means_and_stds[1] if means_and_stds is not None else None)
+            return [normalized_ekg_hs, normalized_info], [ekg_hs_means_and_stds, info_means_and_stds]
+        return norm(X, means_and_stds)
 
     def get_split(self, rs=42):
         '''Split the data into training set, validation set, and testing set.
@@ -102,6 +109,13 @@ class BaseDataGenerator:
             train_set, valid_set, test_set
         '''
         def combine(set1, set2):
+            if self.config.include_info:
+                rtn = [None, None]
+                # X
+                rtn[0] = [np.append(set1[0][i], set2[0][i], axis=0) for i in range(2)]
+                # y
+                rtn[1] =np.append(set1[1], set2[1], axis=0)
+                return rtn
             return [np.append(set1[i], set2[i], axis=0) for i in range(2)]
 
         train_set, valid_set, test_set = None, None, None
@@ -124,12 +138,25 @@ class BaseDataGenerator:
         Outputs:
             train_set, valid_set, test_set
         '''
+        def multi_input_format(X):
+            ekg_hs, info = X[0], X[1]
+            return {
+                'ekg_hs_input': ekg_hs,
+                'info_input': info
+        }
+
         train_set, valid_set, test_set = self.get_split()
 
         # do normalize using means and stds from training data
-        train_set[0], self.means_and_stds = self.normalize(train_set[0])
-        valid_set[0], _ = self.normalize(valid_set[0], self.means_and_stds)
-        test_set[0], _ = self.normalize(test_set[0], self.means_and_stds)
+        train_set[0], self.means_and_stds = self.normalize(train_set[0], include_info=self.config.include_info)
+        valid_set[0], _ = self.normalize(valid_set[0], self.means_and_stds, include_info=self.config.include_info)
+        test_set[0], _ = self.normalize(test_set[0], self.means_and_stds, include_info=self.config.include_info)
+
+        # do format convertiona for info
+        if self.config.include_info:
+            train_set[0]    = multi_input_format(train_set[0])
+            valid_set[0]    = multi_input_format(valid_set[0])
+            test_set[0]     = multi_input_format(test_set[0])
 
         return train_set, valid_set, test_set
 
@@ -170,14 +197,15 @@ def patient_split(*args, **kwargs):
     warnings.warn('The patient_split() method is deprecated, use subject_split() instead!', UserWarning)
     return subject_split(*args, **kwargs)
 
-def subject_split(X, y, subject_id, rs=42):
+def subject_split(X, y, subject_id, rs=42, infos=None):
     '''Split the X and y by the subject ID by the ratio (n_train: n_valid: n_test = 0.49: 0.21: 0.3).
 
     Args:
         X: np.ndarray of shape [n_instance, ...]
         y: np.ndarray of shape [n_instance, ...]
+        infos: np.ndarray of shape [n_instance, ...]
 
-    Returns:
+    Returns: 
         [X_train, y_train], [X_valid, y_valid], [X_test, y_test]
     '''
     unique_subject_id = np.unique(np.array(subject_id))
@@ -193,6 +221,11 @@ def subject_split(X, y, subject_id, rs=42):
     X_train, y_train    = X[_m_train],  y[_m_train]
     X_test, y_test      = X[_m_test],   y[_m_test]
     X_valid, y_valid    = X[_m_valid],  y[_m_valid]
+
+    if infos is not None:
+        X_train     = [X_train, infos[_m_train]]
+        X_test      = [X_test,  infos[_m_test]]
+        X_valid     = [X_valid, infos[_m_valid]]
 
     return [[X_train, y_train], [X_valid, y_valid], [X_test, y_test]]
 

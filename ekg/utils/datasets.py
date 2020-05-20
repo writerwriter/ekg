@@ -38,6 +38,9 @@ class DatasetLoader():
         self.abnormal_subject_id = self.load_subject_id(is_normal=False)
         self.normal_subject_id = self.load_subject_id(is_normal=True)
 
+        if self.config.include_info:
+            self.abnormal_info = self.load_abnormal_info()
+
     def get_channel_set(self):
         return calculate_channel_set(self.config.n_ekg_channels,
                                         self.config.n_hs_channels,
@@ -45,6 +48,11 @@ class DatasetLoader():
                                         self.hs_channels)
 
     def load_X(self, filename):
+        '''Return EKG and heart sound signals
+
+        Outputs:
+            X: np.ndarrayd of shape (n_instances, signal_length, n_channels)
+        '''
         X = np.zeros((0, self.config.n_ekg_channels+self.config.n_hs_channels, self.config.sampling_rate*10))
     
         full_X = np.load(os.path.join(self.datadir, filename)) # (n_instances, n_channels, n_samples)
@@ -62,6 +70,9 @@ class DatasetLoader():
 
     def load_abnormal_X(self):
         return self.load_X('abnormal_X.npy')
+
+    def load_abnormal_info(self):
+        return NotImplementedError('load_abnormal_info not implemented.')
     
     def load_normal_X(self):
         return self.load_X('normal_X.npy')
@@ -92,7 +103,10 @@ class DatasetLoader():
             return [train_set, valid_set, test_set]
 
         # do abnormal split by abnormal subject ID
-        abnormal_training_set, abnormal_valid_set, abnormal_test_set  = subject_split(self.abnormal_X, self.abnormal_y, self.abnormal_subject_id, rs)
+        abnormal_training_set, abnormal_valid_set, abnormal_test_set  = subject_split(self.abnormal_X, 
+                                                                                        self.abnormal_y, 
+                                                                                        self.abnormal_subject_id, rs, 
+                                                                                        infos=self.abnormal_info if self.config.include_info else None)
 
         # do normal split by normal subject ID
         if self.config.with_normal_subjects:

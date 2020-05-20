@@ -117,9 +117,9 @@ def train():
         EarlyStopping(monitor='val_loss', patience=20), # must be placed last otherwise it won't work
     ]
 
-    train_set = shuffle(train_set[0], train_set[1])
-    valid_set = shuffle(valid_set[0], valid_set[1])
-    model.fit(train_set[0], to_cs_st(train_set[1]), batch_size=wandb.config.batch_size, epochs=500,
+    model.fit(  train_set[0], 
+                to_cs_st(train_set[1]), 
+                batch_size=wandb.config.batch_size, epochs=500,
                 validation_data=(valid_set[0], to_cs_st(valid_set[1])),
                 callbacks=callbacks, shuffle=True)
     model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
@@ -171,13 +171,20 @@ if __name__ == '__main__':
         'prediction_kernel_length': 5,
         'prediction_nfilters': 8,
 
-        'batch_size': 128,
+        'batch_size': 64,
         'kernel_initializer': 'glorot_uniform',
         'skip_connection': True,
         'crop_center': True,
         'se_block': True,
 
         'prediction_head': True,
+        
+        'include_info': True, # only works with audicor_10s
+        'infos': ['sex', 'age', 'height', 'weight', 'BMI'],
+        'info_apply_noise': True,
+        'info_noise_stds': [0, 2, 1, 2, 0.25], # stds of gaussian noise
+        'info_nlayers': 2,
+        'info_units': 8,
 
         'radam': True,
 
@@ -189,8 +196,7 @@ if __name__ == '__main__':
         'output_l1_regularizer': 0, # 0 if disable
         'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
 
-        'remove_dirty': 2, # deprecated, always remove dirty data
-        'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
+        'datasets': ['audicor_10s'], # 'big_exam', 'audicor_10s'
 
         'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
         'big_exam_hs_channels': [8, 9],
@@ -199,14 +205,14 @@ if __name__ == '__main__':
         'audicor_10s_ekg_channels': [0],
         'audicor_10s_hs_channels': [1],
         'audicor_10s_only_train': False,
-
-        'include_info': True, # sex, age, height, weight, BMI for audicor_10s
+        'audicor_10s_ignore_888': True,
 
         'downsample': 'direct', # average
-        'with_normal_subjects': True,
-        'normal_subjects_only_train': True,
+        'with_normal_subjects': False,
+        'normal_subjects_only_train': False,
 
         'tf': '2.2',
+        'remove_dirty': 2, # deprecated, always remove dirty data
 
     }, include_preprocessing_setting=True)
 

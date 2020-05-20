@@ -1,7 +1,8 @@
 import tensorflow.keras.backend as K
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Lambda, BatchNormalization, GlobalAveragePooling1D
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, Dense, Add, Concatenate
+from tensorflow.keras.layers import Conv1D, MaxPooling1D, Dense, Add, Concatenate, Reshape
+from tensorflow.keras.layers import GaussianNoise
 
 from ..layers import LeftCropLike, CenterCropLike
 from ..layers import squeeze_excite_block
@@ -45,13 +46,25 @@ def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, h
     return hs
 
 def backbone(config, include_top=False, classification=True, classes=2):
-    total_input = Input((config.sampling_rate*10, config.n_ekg_channels + config.n_hs_channels))
+    ekg_hs_input = Input((config.sampling_rate*10, config.n_ekg_channels + config.n_hs_channels), name='ekg_hs_input')
+
+    if config.include_info:
+        info_input = Input((len(config.infos), ), name='info_input') # sex, age, height, weight, BMI
+
+        info = info_input
+        if config.info_apply_noise:
+            infos = list()
+            for i, info_string in enumerate(config.infos):
+                this_info = Lambda(lambda x, i: x[:, i], arguments={'i': i}, name='{}_input'.format(info_string))(info)
+                this_info = Reshape((1, ))(this_info)
+                infos.append(GaussianNoise(stddev=config.info_noise_stds[i])(this_info))
+            info = Concatenate(axis=-1, name='noise_info_input')(infos)
     
     # ekg branch
     if config.n_ekg_channels != 0:
         ekg_input = Lambda(lambda x, n_ekg_channels: x[:, :, :n_ekg_channels], 
                                     arguments={'n_ekg_channels': config.n_ekg_channels}, 
-                                    name='ekg_input')(total_input) # (10000, 8)
+                                    name='ekg_input')(ekg_hs_input) # (10000, 8)
         ekg = _ekg_branch(ekg_input, 
                             config.branch_nlayers,
                             config.ekg_nfilters,
@@ -64,7 +77,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
     if config.n_hs_channels != 0:
         heart_sound_input = Lambda(lambda x, n_hs_channels: x[:, :, -n_hs_channels:], 
                                     arguments={'n_hs_channels': config.n_hs_channels}, 
-                                    name='hs_input')(total_input) # (10000, 2)
+                                    name='hs_input')(ekg_hs_input) # (10000, 2)
 
         hs_outputs = list()
         for i in range(config.n_hs_channels):
@@ -131,13 +144,29 @@ def backbone(config, include_top=False, classification=True, classes=2):
                         head_output = MaxPooling1D(2, padding='same', name='pred_{}_maxpool_{}'.format(i_class, i))(head_output)
 
                 head_output = GlobalAveragePooling1D(name='pred_{}_gap'.format(i_class))(head_output)
+
+                # info MLP
+                if config.include_info:
+                    head_output = Concatenate(axis=-1, name='pred_{}_info_concat'.format(i_class))([head_output, info])
+                    for j in range(config.info_nlayers):
+                        head_output = Dense(config.info_units, activation='relu', name='pred_{}_info_dense_{}'.format(i_class, j))(head_output)
+
                 head_output = Dense(1, activation='linear', name='pred_{}_output'.format(i_class))(head_output)
                 outputs.append(head_output)
             
             output = Concatenate(axis=-1, name='output')(outputs)
         else:
             output = GlobalAveragePooling1D(name='output_gap')(output)
+            # info MLP
+            if config.include_info:
+                output = Concatenate(axis=-1, name='final_info_concat')([output, info])
+                for i in range(config.info_nlayers):
+                    output = Dense(config.info_units, name='final_info_dense_{}'.format(i))(output)
+
             output = Dense(classes, activation='softmax' if classification else 'linear', name='output')(output) # classification or regression
 
-    model = Model(total_input, output)
+    if config.include_info:
+        model = Model(inputs=[ekg_hs_input, info_input], outputs=[output])
+    else:
+        model = Model(ekg_hs_input, output)
     return model
