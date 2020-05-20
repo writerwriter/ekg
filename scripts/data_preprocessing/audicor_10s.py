@@ -81,50 +81,61 @@ def read_data(normal_dir, abnormal_dir, do_bandpass_filter, filter_lowcut, filte
     return normal, abnormal, np.array(normal_filenames), np.array(abnormal_filenames)
 
 def generate_survival_data(old_label_filename, new_label_filename, label_dir):
-    def merge(old_df, new_df):
-        # generate filename attribute
-        old_df['filename'] = old_df.apply(lambda row: row['SubjectID'] + '_' + 
-                                                            ('SCREENING' if row['API_Visit'] == 888 else
-                                                            'V' + str(row['API_Visit'])) + 
+    def merge(old_df, new_df, medical_df):
+        def generate_filename(df, subject_id_column, visit_code_column):
+            df['filename'] = df.apply(lambda row: row[subject_id_column] + '_' + 
+                                                            ('SCREENING' if row[visit_code_column] == 888 else
+                                                            'V' + str(row[visit_code_column])) + 
                                                             '_Snapshot.txt', axis=1)
-        old_df = old_df[~old_df['filename'].duplicated()] # remove duplicated entries
+            df = df[~df['filename'].duplicated()] # remove duplicated entries
+            return df
+
+        # generate filename attribute
+        old_df = generate_filename(old_df, 'SubjectID', 'API_Visit')
 
         # fix TVGH025 End_Point_visit code manually
         new_df.iloc[280, 3] = 3 
 
         # generate filename attribute
-        new_df['filename'] = new_df.apply(lambda row: row['Subject ID'] + '_' + 
-                                                            ('SCREENING' if row['End_Piont_visit'] == 888 else 
-                                                            'V' + str(row['End_Piont_visit'])) + 
-                                                            '_Snapshot.txt',axis=1)
+        new_df = generate_filename(new_df, 'Subject ID', 'End_Piont_visit')
+
         # there should be no duplicated entries
         assert new_df[new_df['filename'].isin(new_df[new_df['filename'].duplicated()]['filename'])].empty,\
                 "There're duplicated entries in merged dataframe, please check!"
+
+        # generate filename attribute
+        medical_df = generate_filename(medical_df, 'Subject ID', 'Medical_History_visit')
+        medical_df.rename(columns={
+            'Visit Date': 'medical_visit_date'
+        }, inplace=True)
 
         # merge the two dataframes by filenames
         merged_df = pd.DataFrame()
 
         merged_df['filename'] = old_df['filename']
         merged_df = merged_df.append(new_df[['filename']], ignore_index=True)[['filename']] # append new_df's filename to the merged_df
+        merged_df = merged_df.append(medical_df[['filename']], ignore_index=True)[['filename']] # append medical_df's filename to the merged_df
 
         merged_df = merged_df.sort_values('filename').reset_index(drop=True) # sort by filename
         merged_df = merged_df[~merged_df['filename'].duplicated()] # remove duplicated entries
 
-        # merge visit dates from both dataframes
+        # merge visit dates from all the dataframes
         merged_df = merged_df.merge(old_df[['filename', 'VisitDate']], left_on='filename', right_on='filename', how='left')
         merged_df = merged_df.merge(new_df[['filename', 'Visit Date']], left_on='filename', right_on='filename', how='left')
+        merged_df = merged_df.merge(medical_df[['filename', 'medical_visit_date']], left_on='filename', right_on='filename', how='left')
 
         merged_df['measurement_date'] = merged_df['VisitDate']
-        merged_df.loc[merged_df.VisitDate.isnull(), 'measurement_date'] = merged_df['Visit Date']
+        merged_df.loc[merged_df.measurement_date.isnull(), 'measurement_date'] = merged_df['Visit Date']
+        merged_df.loc[merged_df.measurement_date.isnull(), 'measurement_date'] = merged_df['medical_visit_date']
 
         # drop used attributes
-        merged_df = merged_df.drop(['VisitDate', 'Visit Date'], axis=1, errors='ignore')
+        merged_df = merged_df.drop(['VisitDate', 'Visit Date', 'medical_visit_date'], axis=1, errors='ignore')
 
         return merged_df
 
     def append_follow_up_date(merged_df, new_followup_df):
         # merge by subject ID
-        merged_df['subject_id'] = merged_df.apply(lambda row: row['filename'].split('_')[0], axis=1)
+        merged_df['subject_id'] = merged_df.apply(lambda row: row['filename'].split('_')[0], axis=1) # TODO: FIX MMH_{} issue
         merged_df = merged_df.merge(new_followup_df[['Subject ID', 'End_Point_FollowUpDate']], left_on='subject_id', right_on='Subject ID', how='left')
 
         # rename and drop used columns
@@ -135,10 +146,13 @@ def generate_survival_data(old_label_filename, new_label_filename, label_dir):
 
     def append_ADHF_dates(merged_df, new_followup_df):
         def find_adhfs(row):
+            if not any(new_followup_df['Subject ID'] == row.subject_id): # cannot find subject id
+                return np.nan
             adhfs = new_followup_df[new_followup_df['Subject ID'] == row.subject_id][['End_Point_ADHF_DT{:d}'.format(i) for i in range(1, 5)]].values.tolist()[0]
             adhfs = [date for date in adhfs if date == date]
             return adhfs
         merged_df['ADHF_dates'] = merged_df.apply(find_adhfs, axis=1)
+        merged_df.dropna(axis=0, how='any', inplace=True)
         return merged_df
 
     def append_event_dates(merged_df, new_followup_df, event_name, new_event_name):
@@ -310,11 +324,17 @@ def generate_survival_data(old_label_filename, new_label_filename, label_dir):
 
         # re-calculate BMI
         df['BMI'] = df.weight / (df.height**2 * 0.0001)
+
+        # fill nan with mean / medium / mode
+        df['sex'] = df[['sex']].fillna(df.sex.mode().values[0])
+        df[['age', 'height', 'weight', 'BMI']] = df[['age', 'height', 'weight', 'BMI']].fillna(df[['age', 'height', 'weight', 'BMI']].mean())
+
         return df
 
     # read all files
     old_df, new_df = pd.read_excel(old_label_filename), pd.read_excel(new_label_filename)
     new_followup_df = pd.read_excel(new_label_filename, sheet_name=3) # the third sheet which has follow up data
+    medical_df = pd.read_excel(os.path.join(label_dir, 'HF03. Medical History.xlsx'), skiprows=[0, 1, 3]) # medical history
 
     sex_df = pd.read_excel(os.path.join(label_dir, 'HF01. Demongraphy.xlsx'), skiprows=[0, 1, 3]) # sex and age
     height_df = pd.read_excel(os.path.join(label_dir, 'HF04. Height and Weight.xlsx'), skiprows=[0, 1, 3]) # height, weight and BMI
@@ -323,7 +343,7 @@ def generate_survival_data(old_label_filename, new_label_filename, label_dir):
     new_followup_df.loc[new_followup_df['Subject ID'] == 'FEMH012', 'End_Point_CV_death_DT'] = '10/01/2019'
 
     # merge them by filename, get measurement_date
-    merged_df = merge(old_df, new_df)
+    merged_df = merge(old_df, new_df, medical_df)
 
     merged_df = append_follow_up_date(merged_df, new_followup_df)
     # merged_df = append_ADHF(merged_df, new_followup_df)
