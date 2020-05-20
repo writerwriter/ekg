@@ -107,8 +107,9 @@ def generate_sweep(task, dataset, hs_ekg_setting, info_setting):
         set_parameters(sweep, 'batch_size', 64)
 
         set_parameters(sweep, 'include_info', info_setting == 'with_info')
-        set_parameters(sweep, 'info_nlayers', [1, 2, 3, 4, 5], search=True)
-        set_parameters(sweep, 'info_units', [8, 16, 32, 64], search=True)
+        if info_setting == 'with_info':
+            set_parameters(sweep, 'info_nlayers', [1, 2, 3, 4, 5], search=True)
+            set_parameters(sweep, 'info_units', [8, 16, 32, 64], search=True)
     
     return sweep
 
