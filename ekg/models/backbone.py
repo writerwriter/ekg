@@ -154,7 +154,10 @@ def backbone(config, include_top=False, classification=True, classes=2):
                 head_output = Dense(1, activation='linear', name='pred_{}_output'.format(i_class))(head_output)
                 outputs.append(head_output)
             
-            output = Concatenate(axis=-1, name='output')(outputs)
+            if len(outputs) > 1:
+                output = Concatenate(axis=-1, name='output')(outputs)
+            else:
+                output = outputs[0]
         else:
             output = GlobalAveragePooling1D(name='output_gap')(output)
             # info MLP

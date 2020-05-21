@@ -16,12 +16,12 @@ def preprocessing(dataloader):
     if dataloader.config.include_info:
         for i, info in enumerate(dataloader.config.infos):
             remove_mask = np.logical_or(remove_mask, dataloader.abnormal_info[:, i] == -1)
+        dataloader.abnormal_info = dataloader.abnormal_info[~remove_mask]
 
     keep_mask = ~remove_mask
     dataloader.abnormal_X = dataloader.abnormal_X[keep_mask]
     dataloader.abnormal_y = dataloader.abnormal_y[keep_mask]
     dataloader.abnormal_subject_id = dataloader.abnormal_subject_id[keep_mask]
-    dataloader.abnormal_info = dataloader.abnormal_info[keep_mask]
 
     # limit censoring for every event
     for i, event_name in enumerate(dataloader.config.events):
