@@ -128,6 +128,10 @@ class HazardAudicor10sLoader(Audicor10sLoader):
             y[:, i, 0] = merged_df['{}_censoring_status'.format(event_name)]
             y[:, i, 1] = merged_df['{}_survival_time'.format(event_name)]
 
+        if self.config.audicor_10s_ignore_888:
+            for i, event_name in enumerate(self.config.events):
+                y[ filename_df.filename.str.contains('screen').values , i, 0] = -1 # cs == -1 for ignoring
+
         return np.tile(y, [len(self.channel_set), 1, 1])
 
     def get_split(self, rs=42):
