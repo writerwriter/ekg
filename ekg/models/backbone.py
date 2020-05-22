@@ -157,7 +157,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
             if len(outputs) > 1:
                 output = Concatenate(axis=-1, name='output')(outputs)
             else:
-                output = outputs[0]
+                output = Lambda(lambda x: x, name='output')(outputs[0])
         else:
             output = GlobalAveragePooling1D(name='output_gap')(output)
             # info MLP

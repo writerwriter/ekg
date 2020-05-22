@@ -19,7 +19,7 @@ def ensemble_predict(models, X, batch_size=64):
     y_pred = np.stack(y_preds, axis=2).mean(axis=-1) # (?, n_events, num_models) -> (?, n_events)
     return y_pred
 
-def evaluation(models, test_set, event_names):
+def evaluation(models, test_set, event_names, reverse=True):
     '''
         test_set[1]: (num_samples, num_events, 2)
     '''
@@ -33,22 +33,24 @@ def evaluation(models, test_set, event_names):
 
     cindices = list()
 
+    if reverse: y_pred = y_pred * -1
+
     # calculate cindex
     for i in range(len(event_names)): # for every event
         event_cs, event_st = y[:, i, 0], y[:, i, 1]
-        cindex = concordance_index(event_st, -y_pred[:, i], event_cs) # cindex of the event
+        cindex = concordance_index(event_st, y_pred[:, i], event_cs) # cindex of the event
         print('Concordance index of {} : {:.4f}'.format(event_names[i], cindex))
         cindices.append(cindex)
 
     return np.array(cindices)
 
-def log_evaluation(models, test_set, log_prefix, event_names):
-    cindices = evaluation(models, test_set, event_names)
+def log_evaluation(models, test_set, log_prefix, event_names, reverse=True):
+    cindices = evaluation(models, test_set, event_names, reverse)
     for cindex, event_name in zip(cindices, event_names):
         log_name = '{}_{}_cindex'.format(log_prefix, event_name)
         wandb.log({log_name: cindex})
 
-def evaluation_plot(models, train_set, run_set, prefix=''):
+def evaluation_plot(models, train_set, run_set, prefix='', reverse=True):
     # upload plots
     try:
         train_pred = models.predict(train_set[0])
@@ -60,7 +62,7 @@ def evaluation_plot(models, train_set, run_set, prefix=''):
     # KM curve
     for i, event_name in enumerate(wandb.config.events):
         wandb.log({'{}best model {} KM curve'.format(prefix, event_name): 
-                        wandb.Image(get_KM_plot(train_pred[:, i], run_pred[:, i], run_set[1][:, i], event_name))})
+                        wandb.Image(get_KM_plot(train_pred[:, i], run_pred[:, i], run_set[1][:, i], event_name, reverse=reverse))})
         plt.close()
 
     # scatter
@@ -69,7 +71,7 @@ def evaluation_plot(models, train_set, run_set, prefix=''):
                         wandb.Image(get_survival_scatter(run_pred[:, i], 
                                                         run_set[1][:, i, 0], 
                                                         run_set[1][:, i, 1], 
-                                                        event_name))})
+                                                        event_name, reverse=reverse))})
         plt.close()
 
 def print_statistics(train_set, valid_set, test_set, event_names):
@@ -84,6 +86,12 @@ def print_statistics(train_set, valid_set, test_set, event_names):
             print('\t# of events:', (cs==1).sum())
             print('\tevent ratio: {:.4f}'.format((cs==1).sum() / (cs==0).sum()))
             print()
+
+def to_prediction_model(trainable_model):
+    from tensorflow.keras.models import Model
+    # get the outputs of the prediction model
+    original_output = trainable_model.get_layer('output')
+    return Model(trainable_model.layers[0].input, original_output.output)
 
 if __name__ == '__main__':
     from train import HazardBigExamLoader, HazardAudicor10sLoader
@@ -118,19 +126,26 @@ if __name__ == '__main__':
     g = BaseDataGenerator(dataloaders=dataloaders,
                             wandb_config=wandb_config,
                             preprocessing_fn=preprocessing)
+    
+    reverse = True
+    if wandb_config.loss == 'AFT':
+        # convert to prediction_model
+        for i in range(len(models)):
+            models[i] = to_prediction_model(models[i])
+        reverse = False
 
     train_set, valid_set, test_set = g.get()
     print_statistics(train_set, valid_set, test_set, wandb_config.events)
 
     print('Training set:')
-    log_evaluation(models, train_set, 'best', wandb_config.events)
+    log_evaluation(models, train_set, 'best', wandb_config.events, reverse)
 
     print('Validation set:')
-    log_evaluation(models, valid_set, 'best_val', wandb_config.events)
+    log_evaluation(models, valid_set, 'best_val', wandb_config.events, reverse)
 
     print('Testing set:')
     evaluation(models, test_set, wandb_config.events)
 
-    evaluation_plot(models, train_set, train_set, 'training - ')
-    evaluation_plot(models, train_set, valid_set, 'validation - ')
-    evaluation_plot(models, train_set, test_set, 'testing - ')
+    evaluation_plot(models, train_set, train_set, 'training - ', reverse)
+    evaluation_plot(models, train_set, valid_set, 'validation - ', reverse)
+    evaluation_plot(models, train_set, test_set, 'testing - ', reverse)

@@ -42,6 +42,47 @@ def negative_hazard_log_likelihood(event_weights, output_l1=0, output_l2=0):
         return K.mean(nhlls) + output_l1 * K.sum(K.abs(pred_risk)) + output_l2 * K.sum(pred_risk * pred_risk)
     return loss
 
+class AFTLoss(tf.keras.layers.Layer):
+    def __init__(self, n_events, **kwargs):
+        self.n_events = n_events
+        self.log_stds = list()
+        super().__init__(**kwargs)
+
+    def build(self, input_shape=None):
+        for i in range(self.n_events):
+            self.log_stds.append(self.add_weight(name='log_std_{}'.format(i), shape=(1, ), 
+                                        initializer=tf.keras.initializers.Constant(2), 
+                                        trainable=True))
+        
+        super().build(input_shape)
+
+    def get_config(self):
+        return {
+            'n_events': self.n_events,
+        }
+
+    def call(self, inputs):
+        '''
+        Args:
+            inputs: [cs0, st0, cs1, st1, ... , risk0, risk1, ...]
+        '''
+        risks = list()
+        total_loss = 0
+        for i_event in range(self.n_events):
+            cs = inputs[i_event*2]
+            st = inputs[i_event*2 + 1]
+            risk = inputs[self.n_events * 2 + i_event]
+            risks.append(risk)
+
+            # log MLE of AFT
+            zi = ( K.log(st + 1) - risk ) / K.exp(self.log_stds[i_event])
+            loss = K.mean( self.log_stds[i_event] * cs - cs * zi + K.exp(zi))
+            total_loss += loss
+
+        self.add_loss(total_loss)
+        # only output risks
+        return K.concatenate(risks, -1)
+
 def cindex_loss(y, risk):
     cs, st = tf.cast(y[:, 0:1], tf.float32), tf.cast(y[:, 1:2], tf.float32)
 

@@ -11,6 +11,7 @@ import wandb
 from ..layers import LeftCropLike
 from ..layers.sincnet import SincConv1D
 from ..layers import CenterCropLike
+from ..losses import AFTLoss
 
 from .train_utils import allow_gpu_growth; allow_gpu_growth()
 from .train_utils import set_wandb_config
@@ -64,7 +65,7 @@ def print_cm(cm, labels, hide_zeroes=False, hide_diagonal=False, hide_threshold=
             print(cell, end=' ')
         print()
 
-def get_KM_plot(train_pred, test_pred, test_true, event_name):
+def get_KM_plot(train_pred, test_pred, test_true, event_name, reverse=True):
     '''
     Args:
         train_pred:     np.array of shape (n_samples)
@@ -79,6 +80,10 @@ def get_KM_plot(train_pred, test_pred, test_true, event_name):
     # split testing data into 2 groups by median, high risk / low risk
     high_risk_indices = np.where(test_pred >= median)[0]
     low_risk_indices = np.where(test_pred < median)[0]
+
+    if not reverse:
+        # swap
+        high_risk_indices, low_risk_indices = low_risk_indices, high_risk_indices
     
     high_risk_cs = test_true[high_risk_indices, 0]
     high_risk_st = test_true[high_risk_indices, 1]
@@ -107,7 +112,7 @@ def get_KM_plot(train_pred, test_pred, test_true, event_name):
     plt.tight_layout()
     return plt
 
-def get_survival_scatter(y_pred, cs_true, st_true, event_name):
+def get_survival_scatter(y_pred, cs_true, st_true, event_name, reverse=True):
     '''
     Args:
         y_pred: np.array of shape (n_samples)
@@ -126,9 +131,11 @@ def get_survival_scatter(y_pred, cs_true, st_true, event_name):
 
     plt.xlabel('predicted risk')
     plt.ylabel('survival time (days)')
+
+    if reverse: y_pred = y_pred * -1
     
     plt.legend()
-    plt.title('{} - cindex: {:.3f}'.format(event_name, concordance_index(st_true, -y_pred, cs_true)))
+    plt.title('{} - cindex: {:.3f}'.format(event_name, concordance_index(st_true, y_pred, cs_true)))
 
     plt.tight_layout()
     return plt
@@ -196,7 +203,8 @@ def parse_wandb_models(path, number_models=-1, metric=None):
         models.append(load_model(modeldir + '/model-best.h5', 
                             custom_objects={'SincConv1D': SincConv1D,
                                             'LeftCropLike': LeftCropLike,
-                                            'CenterCropLike': CenterCropLike}, compile=False))
+                                            'CenterCropLike': CenterCropLike,
+                                            'AFTLoss': AFTLoss}, compile=False))
 
         configs.append(dict_to_config(run.config))
         model_paths.append(run.path)
