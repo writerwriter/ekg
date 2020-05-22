@@ -64,6 +64,8 @@ def read_data(normal_dir, abnormal_dir, do_bandpass_filter, filter_lowcut, filte
             ekg = denoise.ekg_denoise(outlier_removal(values[np.newaxis, :fs*10]), number_channels=1).reshape(-1) # (5000)
             if do_bandpass_filter:
                 hs = denoise.heart_sound_denoise(outlier_removal(values[np.newaxis, fs*10:]), filter_lowcut, filter_highcut, fs) #  (5000)
+            else:
+                hs = outlier_removal(values[np.newaxis, fs*10:])
             X[i, 0, :] = ekg
             X[i, 1, :] = hs
             
@@ -105,9 +107,9 @@ def generate_survival_data(old_label_filename, new_label_filename, label_dir):
 
         # generate filename attribute
         medical_df = generate_filename(medical_df, 'Subject ID', 'Medical_History_visit')
-        medical_df.rename(columns={
+        medical_df = medical_df.rename(columns={
             'Visit Date': 'medical_visit_date'
-        }, inplace=True)
+        })
 
         # merge the two dataframes by filenames
         merged_df = pd.DataFrame()
@@ -152,7 +154,7 @@ def generate_survival_data(old_label_filename, new_label_filename, label_dir):
             adhfs = [date for date in adhfs if date == date]
             return adhfs
         merged_df['ADHF_dates'] = merged_df.apply(find_adhfs, axis=1)
-        merged_df.dropna(axis=0, how='any', inplace=True)
+        merged_df = merged_df.dropna(axis=0, how='any')
         return merged_df
 
     def append_event_dates(merged_df, new_followup_df, event_name, new_event_name):
@@ -319,7 +321,7 @@ def generate_survival_data(old_label_filename, new_label_filename, label_dir):
         })
 
         # drop dup filenames
-        df.drop_duplicates(subset='filename', keep='first', inplace=True)
+        df = df.drop_duplicates(subset='filename', keep='first')
         df = df.apply(interpolation, axis=1) # do height & weight interpolation
 
         # re-calculate BMI
@@ -374,7 +376,6 @@ if __name__ == '__main__':
     DO_BANDPASS_FILTER = config['Audicor_10s'].getboolean('do_bandpass_filter')
     FILTER_LOWCUT, FILTER_HIGHCUT = int(config['Audicor_10s']['bandpass_filter_lowcut']), int(config['Audicor_10s']['bandpass_filter_highcut'])
 
-    '''
     normal_X, abnormal_X, normal_filenames, abnormal_filenames = read_data(NORMAL_DIR, 
                                                                     ABNORMAL_DIR, 
                                                                     DO_BANDPASS_FILTER, 
@@ -387,7 +388,6 @@ if __name__ == '__main__':
 
     np.save(os.path.join(OUTPUT_DIR, 'abnormal_X.npy'), abnormal_X)
     np.save(os.path.join(OUTPUT_DIR, 'abnormal_filenames.npy'), abnormal_filenames)
-    '''
 
     abnormal_event_df = generate_survival_data(OLD_LABEL_FILENAME, NEW_LABEL_FILENAME, LABEL_DIR)
     abnormal_event_df.to_csv(os.path.join(OUTPUT_DIR, 'abnormal_event.csv'), index=False)
