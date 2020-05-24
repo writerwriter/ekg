@@ -98,12 +98,24 @@ def get_trainable_model(prediction_model, loss_layer):
         loss_inputs.append(Lambda(lambda x, i: x[:, i], arguments={'i': i}, name='risk_{}'.format(event))(risks)) # risk
 
     output = loss_layer(loss_inputs)
-    return Model([prediction_model.input, cs_input, st_input], output)
+    if wandb.config.include_info:
+        return Model([prediction_model.input[0], prediction_model.input[1], cs_input, st_input], output)
+    else:
+        return Model([prediction_model.input, cs_input, st_input], output)
 
 def get_train_valid(train_set, valid_set):
     if wandb.config.loss == 'AFT': # Note: doesn't work with info
-        X_train = [train_set[0], train_set[1][:, :, 0], train_set[1][:, :, 1]]
-        X_valid = [valid_set[0], valid_set[1][:, :, 0], valid_set[1][:, :, 1]]
+        if wandb.config.include_info:
+            X_train = train_set[0].copy()
+            X_train['cs_input'] = train_set[1][:, :, 0]
+            X_train['st_input'] = train_set[1][:, :, 1]
+
+            X_valid = valid_set[0].copy()
+            X_valid['cs_input'] = valid_set[1][:, :, 0]
+            X_valid['st_input'] = valid_set[1][:, :, 1]
+        else:
+            X_train = [train_set[0], train_set[1][:, :, 0], train_set[1][:, :, 1]]
+            X_valid = [valid_set[0], valid_set[1][:, :, 0], valid_set[1][:, :, 1]]
 
         y_train, y_valid = None, None
     else:
@@ -150,7 +162,8 @@ def train():
         ConcordanceIndex(train_set, valid_set, wandb.config.events, prediction_model, reverse=c_index_reverse),
         LogBest(records=['val_loss', 'loss'] + 
                     ['{}_cindex'.format(event_name) for event_name in wandb.config.events] +
-                    ['val_{}_cindex'.format(event_name) for event_name in wandb.config.events]),
+                    ['val_{}_cindex'.format(event_name) for event_name in wandb.config.events] +
+                    ['{}_std'.format(event_name) for event_name in wandb.config.events]),
         WandbCallback(),
         EarlyStopping(monitor='val_loss', patience=50), # must be placed last otherwise it won't work
     ]
@@ -172,7 +185,7 @@ def train():
 
     model = load_model(os.path.join(wandb.run.dir, 'model-best.h5'),
                         custom_objects=custom_objects, compile=False)
-    prediction_model = to_prediction_model(model)
+    prediction_model = to_prediction_model(model, wandb.config.include_info)
 
     print('Training set:')
     evaluation(prediction_model, train_set, wandb.config.events, reverse=c_index_reverse)
@@ -209,7 +222,7 @@ if __name__ == '__main__':
         'prediction_kernel_length': 5,
         'prediction_nfilters': 8,
 
-        'batch_size': 128,
+        'batch_size': 64,
         'kernel_initializer': 'glorot_uniform',
         'skip_connection': True,
         'crop_center': True,
@@ -217,10 +230,10 @@ if __name__ == '__main__':
 
         'prediction_head': True,
         
-        'include_info': False, # only works with audicor_10s
+        'include_info': True, # only works with audicor_10s
         'infos': ['sex', 'age', 'height', 'weight', 'BMI'],
         'info_apply_noise': True,
-        'info_noise_stds': [0, 2, 1, 2, 0.25], # stds of gaussian noise
+        'info_noise_stds': [0, 1, 1, 1, 0.25], # stds of gaussian noise
         'info_nlayers': 2,
         'info_units': 8,
 
@@ -231,12 +244,12 @@ if __name__ == '__main__':
         # data
         'events': ['ADHF'], # 'MI', 'Stroke', 'CVD', 'Mortality'
         'event_weights': [1],
-        'censoring_limit': 99999, # 99999 if no limit specified
+        'censoring_limit': 400, # 99999 if no limit specified
 
         'output_l1_regularizer': 0, # 0 if disable
         'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
 
-        'datasets': ['audicor_10s', 'big_exam'], # 'big_exam', 'audicor_10s'
+        'datasets': ['audicor_10s'], # 'big_exam', 'audicor_10s'
 
         'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
         'big_exam_hs_channels': [8, 9],
@@ -248,8 +261,8 @@ if __name__ == '__main__':
         'audicor_10s_ignore_888': True,
 
         'downsample': 'direct', # average
-        'with_normal_subjects': False,
-        'normal_subjects_only_train': False,
+        'with_normal_subjects': True,
+        'normal_subjects_only_train': True,
 
         'tf': '2.2',
         'remove_dirty': 2, # deprecated, always remove dirty data

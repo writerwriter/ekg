@@ -87,11 +87,14 @@ def print_statistics(train_set, valid_set, test_set, event_names):
             print('\tevent ratio: {:.4f}'.format((cs==1).sum() / (cs==0).sum()))
             print()
 
-def to_prediction_model(trainable_model):
+def to_prediction_model(trainable_model, include_info):
     from tensorflow.keras.models import Model
     # get the outputs of the prediction model
     original_output = trainable_model.get_layer('output')
-    return Model(trainable_model.layers[0].input, original_output.output)
+    if include_info:
+        return Model([trainable_model.input[0], trainable_model.input[1]], original_output.output)
+    else:
+        return Model(trainable_model.layers[0].input, original_output.output)
 
 if __name__ == '__main__':
     from train import HazardBigExamLoader, HazardAudicor10sLoader
@@ -131,7 +134,7 @@ if __name__ == '__main__':
     if wandb_config.loss == 'AFT':
         # convert to prediction_model
         for i in range(len(models)):
-            models[i] = to_prediction_model(models[i])
+            models[i] = to_prediction_model(models[i], wandb_config.include_info)
         reverse = False
 
     train_set, valid_set, test_set = g.get()
