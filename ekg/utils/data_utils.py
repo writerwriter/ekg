@@ -114,7 +114,7 @@ class BaseDataGenerator:
                 # X
                 rtn[0] = [np.append(set1[0][i], set2[0][i], axis=0) for i in range(2)]
                 # y
-                rtn[1] =np.append(set1[1], set2[1], axis=0)
+                rtn[1] = np.append(set1[1], set2[1], axis=0)
                 return rtn
             return [np.append(set1[i], set2[i], axis=0) for i in range(2)]
 

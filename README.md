@@ -104,7 +104,7 @@
         | 0.49 * (B + A)     | 0.21 * (B + A)  | 0.3 * (B + A) | 0.919 / 0.920 / 0.923 | 0.89 / 0.89 / 0.89 | 0.99 / 0.99 / 0.99 | 0.94 / 0.94 / 0.94 | `zx53fukt` |
         | 1.0 * B + 0.49 * A | 0.21 * A        | 0.3 * A       | 0.982 / 0.979 / 0.982 | 0.97 / 0.97 / 0.97 | 1.0 / 1.0 / 1.0    | 0.99 / 0.99 / 0.99 | `ccbq03an` |
 
-* Hazard prediction
+* Hazard prediction - with normal subjects in both training and testing sets
     * Both EKG and Heart Sound
         * Concordance Index - ADHF / Mortality / (MI / Stroke / CVD)
             | Training data      | Validation Data | Testing Data  | Best Model                                 | 3-Model Ensemble                           | 5-Model Ensemble                           | Sweep ID   |
@@ -129,3 +129,22 @@
             | 0.49 * A           | 0.21 * A        | 0.3 * A       | 0.8015 / 0.7890                            | 0.7627 / 0.9261                            | 0.7420 / 0.9097                            | `vrq7unie` |
             | 0.49 * (B + A)     | 0.21 * (B + A)  | 0.3 * (B + A) | 0.7299 / 0.7647                            | 0.7336 / 0.7865                            | 0.7326 / 0.7925                            | `4xtp5skh` |
             | 1.0 * B + 0.49 * A | 0.21 * A        | 0.3 * A       | 0.7267 / 0.8042                            | 0.7386 / 0.8945                            | 0.7545 / 0.9355                            | `4efr1zi8` |
+
+* Hazard prediction - without normal subjects in the testing set.
+    * Both EKG and Heart Sound
+        * Cox
+            * Concordance Index - ADHF / Mortality
+                | Training data      | Validation Data | Testing Data  | Best Model    | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note                              |
+                | ------------------ | --------------- | ------------- | ------------- | ---------------- | ---------------- | ---------- | --------------------------------- |
+                | 0.49 * B           | 0.21 * B        | 0.3 * B       |               |                  |                  |            |                                   |
+                | 0.49 * A           | 0.21 * A        | 0.3 * A       |               |                  |                  |            |                                   |
+                | 0.49 * (B + A)     | 0.21 * (B + A)  | 0.3 * (B + A) | 0.510 / 0.490 | 0.517 / 0.483    | 0.531 / 0.509    | `p1qlmfj5` | censoring 400, normal in training |
+                | 1.0 * B + 0.49 * A | 0.21 * A        | 0.3 * A       |               |                  |                  |            |                                   |
+        * AFT
+            * Concordance Index - ADHF / Mortality
+                | Training data      | Validation Data | Testing Data  | Best Model    | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note                              |
+                | ------------------ | --------------- | ------------- | ------------- | ---------------- | ---------------- | ---------- | --------------------------------- |
+                | 0.49 * B           | 0.21 * B        | 0.3 * B       |               |                  |                  |            |                                   |
+                | 0.49 * A           | 0.21 * A        | 0.3 * A       |               |                  |                  |            |                                   |
+                | 0.49 * (B + A)     | 0.21 * (B + A)  | 0.3 * (B + A) | 0.564 / 0.554 | 0.480 / 0.560    | 0.483 / 0.518    | `cn7awnpy` | censoring 400, normal in training |
+                | 1.0 * B + 0.49 * A | 0.21 * A        | 0.3 * A       |               |                  |                  |            |                                   |

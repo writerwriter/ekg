@@ -143,7 +143,7 @@ def train():
         pickle.dump(g.means_and_stds, f)
 
     prediction_model = backbone(wandb.config, include_top=True, classification=False, classes=len(wandb.config.events))
-    trainable_model = get_trainable_model(prediction_model, AFTLoss(len(wandb.config.events), name='AFT_loss'))
+    trainable_model = get_trainable_model(prediction_model, AFTLoss(len(wandb.config.events), name='AFT_loss')) if wandb.config.loss == 'AFT' else prediction_model
 
     loss = None if wandb.config.loss == 'AFT' else negative_hazard_log_likelihood(wandb.config.event_weights,
                                                     wandb.config.output_l1_regularizer,
@@ -158,7 +158,6 @@ def train():
     callbacks = [
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         # LossChecker(train_set, valid_set),
-        LossVariableChecker(wandb.config.events),
         ConcordanceIndex(train_set, valid_set, wandb.config.events, prediction_model, reverse=c_index_reverse),
         LogBest(records=['val_loss', 'loss'] + 
                     ['{}_cindex'.format(event_name) for event_name in wandb.config.events] +
@@ -167,6 +166,8 @@ def train():
         WandbCallback(),
         EarlyStopping(monitor='val_loss', patience=50), # must be placed last otherwise it won't work
     ]
+
+    if wandb.config.loss == 'AFT': callbacks = [LossVariableChecker(wandb.config.events)] + callbacks
 
     X_train, y_train, X_valid, y_valid = get_train_valid(train_set, valid_set)
     trainable_model.fit(X_train, y_train, batch_size=wandb.config.batch_size, epochs=500,
@@ -185,7 +186,7 @@ def train():
 
     model = load_model(os.path.join(wandb.run.dir, 'model-best.h5'),
                         custom_objects=custom_objects, compile=False)
-    prediction_model = to_prediction_model(model, wandb.config.include_info)
+    prediction_model = to_prediction_model(model, wandb.config.include_info) if wandb.config.loss == 'AFT' else model
 
     print('Training set:')
     evaluation(prediction_model, train_set, wandb.config.events, reverse=c_index_reverse)
@@ -230,7 +231,7 @@ if __name__ == '__main__':
 
         'prediction_head': True,
         
-        'include_info': True, # only works with audicor_10s
+        'include_info': False, # only works with audicor_10s
         'infos': ['sex', 'age', 'height', 'weight', 'BMI'],
         'info_apply_noise': True,
         'info_noise_stds': [0, 1, 1, 1, 0.25], # stds of gaussian noise
@@ -261,7 +262,7 @@ if __name__ == '__main__':
         'audicor_10s_ignore_888': True,
 
         'downsample': 'direct', # average
-        'with_normal_subjects': True,
+        'with_normal_subjects': False,
         'normal_subjects_only_train': True,
 
         'tf': '2.2',
