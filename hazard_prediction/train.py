@@ -203,18 +203,18 @@ if __name__ == '__main__':
 
     # search result
     set_wandb_config({
-        'sincconv_filter_length': 121,
-        'sincconv_nfilters': 32,
+        'sincconv_filter_length': 63,
+        'sincconv_nfilters': 8,
 
-        'branch_nlayers': 1,
+        'branch_nlayers': 2,
 
         'ekg_kernel_length': 13,
         'hs_kernel_length': 35,
 
-        'ekg_nfilters': 1,
-        'hs_nfilters': 1,
+        'ekg_nfilters': 2,
+        'hs_nfilters': 2,
 
-        'final_nlayers': 2, # 4
+        'final_nlayers': 5,
         'final_kernel_length': 5,
         'final_nonlocal_nlayers': 0,
         'final_nfilters': 8,
@@ -223,13 +223,13 @@ if __name__ == '__main__':
         'prediction_kernel_length': 5,
         'prediction_nfilters': 8,
 
-        'batch_size': 64,
+        'batch_size': 128,
         'kernel_initializer': 'glorot_uniform',
-        'skip_connection': True,
+        'skip_connection': False,
         'crop_center': True,
         'se_block': True,
 
-        'prediction_head': True,
+        'prediction_head': False,
         
         'include_info': False, # only works with audicor_10s
         'infos': ['sex', 'age', 'height', 'weight', 'BMI'],
@@ -250,7 +250,7 @@ if __name__ == '__main__':
         'output_l1_regularizer': 0, # 0 if disable
         'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
 
-        'datasets': ['audicor_10s'], # 'big_exam', 'audicor_10s'
+        'datasets': ['audicor_10s', 'big_exam'], # 'big_exam', 'audicor_10s'
 
         'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
         'big_exam_hs_channels': [8, 9],

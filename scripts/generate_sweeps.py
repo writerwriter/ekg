@@ -105,7 +105,9 @@ def generate_sweep(task, dataset, hs_ekg_setting, info_setting):
         set_parameters(sweep, 'event_weights', [1 for _ in events])
         # set_parameters(sweep, 'censoring_limit', 400 if dataset == 'hybrid/audicor_as_test' else 99999)
         set_parameters(sweep, 'censoring_limit', 400)
-        set_parameters(sweep, 'batch_size', 256)
+        set_parameters(sweep, 'batch_size', 128)
+
+        set_parameters(sweep, 'loss', 'AFT')
 
         set_parameters(sweep, 'include_info', info_setting == 'with_info')
         if info_setting == 'with_info':
