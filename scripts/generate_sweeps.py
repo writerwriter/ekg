@@ -118,7 +118,7 @@ def generate_sweep(task, dataset, hs_ekg_setting, info_setting):
 
 def get_all_sweeps():
     sweeps = list()
-    tasks = ['abnormal_detection', 'hazard_prediction']
+    tasks = ['abnormal_detection', 'hazard_prediction', 's3s4']
     datasets = ['audicor_10s', 'big_exam', 'hybrid/audicor_as_test', 'hybrid/both_as_test']
     hs_ekg_settings = ['only_hs', 'only_ekg', 'whole']
     info_settings = ['with_info', 'without_info']
