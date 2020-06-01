@@ -5,7 +5,7 @@ from functools import partial
 import multiprocessing as mp
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
-import os
+import pywt
 
 import better_exceptions; better_exceptions.hook()
 
@@ -273,6 +273,21 @@ def calculate_n_hs_channels(config):
         n_hs_channels = min(n_hs_channels, len(config.audicor_10s_hs_channels))
 
     return n_hs_channels
+
+def generate_wavelet(signal, fs):
+    '''Generate CWT signals of 22Hz - 75Hz.
+    Args:
+        signal: np.array of shape [n_samples]
+        fs: sampling rate
+
+    Outputs:
+        CWT_coef: np.array of shape [25, n_samples]
+    '''
+
+    scale = np.arange(25) * (fs / 1000) + (fs / 1000) * 8
+    coef, freqs = pywt.cwt(signal, scale, 'cgau5', sampling_period=1/fs)
+
+    return coef
 
 if __name__ == '__main__':
     pass
