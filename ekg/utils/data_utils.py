@@ -138,12 +138,17 @@ class BaseDataGenerator:
         Outputs:
             train_set, valid_set, test_set
         '''
-        def multi_input_format(X):
-            ekg_hs, info = X[0], X[1]
-            return {
-                'ekg_hs_input': ekg_hs,
-                'info_input': info
-        }
+        def multi_input_format(X, include_info=False):
+            if include_info:
+                ekg_hs, info = X[0], X[1]
+                return {
+                    'ekg_hs_input': ekg_hs,
+                    'info_input': info
+                }
+            else:
+                return {
+                    'ekg_hs_input': X
+                }
 
         train_set, valid_set, test_set = self.get_split()
 
@@ -152,11 +157,10 @@ class BaseDataGenerator:
         valid_set[0], _ = self.normalize(valid_set[0], self.means_and_stds, include_info=self.config.include_info)
         test_set[0], _ = self.normalize(test_set[0], self.means_and_stds, include_info=self.config.include_info)
 
-        # do format convertiona for info
-        if self.config.include_info:
-            train_set[0]    = multi_input_format(train_set[0])
-            valid_set[0]    = multi_input_format(valid_set[0])
-            test_set[0]     = multi_input_format(test_set[0])
+        # convert X format to dict for model
+        train_set[0]    = multi_input_format(train_set[0], self.config.include_info)
+        valid_set[0]    = multi_input_format(valid_set[0], self.config.include_info)
+        test_set[0]     = multi_input_format(test_set[0], self.config.include_info)
 
         return train_set, valid_set, test_set
 

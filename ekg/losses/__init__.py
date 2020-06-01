@@ -1,46 +1,54 @@
 import tensorflow as tf
 import tensorflow.keras.backend as K
 
-def negative_hazard_log_likelihood(event_weights, output_l1=0, output_l2=0):
-    def loss(cs_st, pred_risk):
+class CoxLoss(tf.keras.layers.Layer):
+    def __init__(self, n_events, event_weights, **kwargs):
+        self.n_events = n_events
+        self.event_weights = event_weights
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        return {
+            'n_events': self.n_events,
+            'event_weights': self.event_weights,
+        }
+    
+    def build(self, input_shape=None):
+        super().build(input_shape)
+
+    @staticmethod
+    def negative_hazard_log_likelihood(cs, st, risk):
+        # sort cs and risk by st
+        sorting_indices = tf.argsort(st)[::-1]
+        sorted_cs = tf.gather(cs, sorting_indices) # (?)
+        sorted_risk = tf.gather(risk, sorting_indices) # (?)
+
+        hazard_ratio = K.exp(sorted_risk)
+        log_risk = K.log(K.cumsum(hazard_ratio))
+        uncensored_likelihood = sorted_risk - log_risk
+        censored_likelihood = uncensored_likelihood * sorted_cs
+        neg_likelihood = -K.sum(censored_likelihood)
+
+        return neg_likelihood
+
+    def call(self, inputs):
         '''
-            cs_st: st * ( -1 * (cs == 0) + 1 * (cs == 1) ) # (?, n_events)
-            pred_risk: (?, n_events)
+        Args:
+            inputs: [cs0, st0, cs1, st1, ... , risk0, risk1, ...]
         '''
-        def event_nhll(cs_st_risk):
-            event_cs = cs_st_risk[0] # (?)
-            event_st = cs_st_risk[1] # (?)
-            event_risk = cs_st_risk[2] # (?)
+        risks = list()
+        total_loss = 0
+        for i_event in range(self.n_events):
+            cs = inputs[i_event*2]
+            st = inputs[i_event*2 + 1]
+            risk = inputs[self.n_events * 2 + i_event]
+            risks.append(risk)
 
-            # sort cs by st
-            sorting_indices = tf.argsort(event_st)[::-1]
-            sorted_event_cs = tf.gather(event_cs, sorting_indices) # (?)
-            sorted_event_risk = tf.gather(event_risk, sorting_indices) # (?)
+            total_loss += self.negative_hazard_log_likelihood(cs, st, risk) * self.event_weights[i_event]
 
-            hazard_ratio = K.exp(sorted_event_risk)
-            log_risk = K.log(K.cumsum(hazard_ratio))
-            uncensored_likelihood = sorted_event_risk - log_risk
-            censored_likelihood = uncensored_likelihood * sorted_event_cs
-            neg_likelihood = -K.sum(censored_likelihood)
-            neg_likelihood = neg_likelihood / (K.sum(sorted_event_cs) + K.epsilon()) # normalization
-
-            return neg_likelihood
-
-        cs = K.cast(K.greater(cs_st, 0), K.floatx()) # (?, n_events)
-        st = K.abs(cs_st) # (?, n_events)
-
-        # (?, n_events) -> (n_events, ?)
-        cs = tf.transpose(cs)
-        st = tf.transpose(st)
-        pred_risk = tf.transpose(pred_risk)
-
-        nhlls = tf.map_fn(event_nhll,
-                            (cs, st, pred_risk),
-                            dtype=tf.float32)
-
-        nhlls = nhlls * event_weights
-        return K.mean(nhlls) + output_l1 * K.sum(K.abs(pred_risk)) + output_l2 * K.sum(pred_risk * pred_risk)
-    return loss
+        self.add_loss(total_loss)
+        # only output risks
+        return K.concatenate(risks, -1)
 
 class AFTLoss(tf.keras.layers.Layer):
     def __init__(self, n_events, **kwargs):

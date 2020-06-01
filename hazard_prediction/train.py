@@ -10,7 +10,7 @@ sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 from ekg.utils.train_utils import allow_gpu_growth; allow_gpu_growth()
 from ekg.utils.train_utils import set_wandb_config
 from ekg.callbacks import LossVariableChecker
-from ekg.losses import AFTLoss
+from ekg.losses import AFTLoss, CoxLoss
 
 # for loging result
 import wandb
@@ -41,49 +41,6 @@ from tensorflow.keras.models import load_model
 from ekg.layers import LeftCropLike, CenterCropLike
 from ekg.layers.sincnet import SincConv1D
 
-def to_cs_st(y):
-    cs = y[:, :, 0]
-    st = y[:, :, 1]
-    return st * (-1 * (cs == 0) + 1 * (cs == 1))
-
-class LossChecker(keras.callbacks.Callback):
-    def __init__(self, train_set, valid_set):
-        self.train_set = train_set
-        self.valid_set = valid_set
-
-    def loss(self, cs_st, pred_risk):
-
-        cs = (cs_st > 0).astype(float) # (?, n_events)
-        st = np.abs(cs_st) # (?, n_events)
-
-        total_loss = 0
-        for i in range(cs.shape[-1]): # for every event
-            this_cs = cs[:, i]
-            this_st = st[:, i]
-            this_risk = pred_risk[:, i]
-
-            sorting_indices = np.argsort(this_st)[::-1]
-            sorted_cs = this_cs[sorting_indices]
-            sorted_risk = this_risk[sorting_indices]
-
-            hazard_ratio = np.exp(sorted_risk)
-            log_risk = np.log(np.cumsum(hazard_ratio))
-            uncensored_likelihood = sorted_risk - log_risk
-            censored_likelihood = sorted_cs * uncensored_likelihood
-            total_loss += -np.sum(censored_likelihood)
-            if total_loss != total_loss:
-                import sys; sys.exit(-1)
-                import pdb; pdb.set_trace()
-        return total_loss / cs.shape[-1]
-
-    def on_epoch_end(self, epoch, logs={}):
-        train_pred = self.model.predict(self.train_set[0])
-        valid_pred = self.model.predict(self.valid_set[0])
-
-        print()
-        print('training loss:', self.loss(to_cs_st(self.train_set[1]), train_pred))
-        print('validation loss:', self.loss(to_cs_st(self.valid_set[1]), valid_pred))
-
 def get_trainable_model(prediction_model, loss_layer):
     cs_input = Input(shape=(len(wandb.config.events, )), name='cs_input') # (?, n_events)
     st_input = Input(shape=(len(wandb.config.events, )), name='st_input') # (?, n_events)
@@ -98,31 +55,27 @@ def get_trainable_model(prediction_model, loss_layer):
         loss_inputs.append(Lambda(lambda x, i: x[:, i], arguments={'i': i}, name='risk_{}'.format(event))(risks)) # risk
 
     output = loss_layer(loss_inputs)
-    if wandb.config.include_info:
-        return Model([prediction_model.input[0], prediction_model.input[1], cs_input, st_input], output)
+    if isinstance(prediction_model.input, list):
+        return Model(prediction_model.input + [cs_input, st_input], output)
     else:
         return Model([prediction_model.input, cs_input, st_input], output)
 
 def get_train_valid(train_set, valid_set):
-    if wandb.config.loss == 'AFT': # Note: doesn't work with info
-        if wandb.config.include_info:
-            X_train = train_set[0].copy()
-            X_train['cs_input'] = train_set[1][:, :, 0]
-            X_train['st_input'] = train_set[1][:, :, 1]
+    X_train = train_set[0].copy()
+    X_train['cs_input'] = train_set[1][:, :, 0]
+    X_train['st_input'] = train_set[1][:, :, 1]
 
-            X_valid = valid_set[0].copy()
-            X_valid['cs_input'] = valid_set[1][:, :, 0]
-            X_valid['st_input'] = valid_set[1][:, :, 1]
-        else:
-            X_train = [train_set[0], train_set[1][:, :, 0], train_set[1][:, :, 1]]
-            X_valid = [valid_set[0], valid_set[1][:, :, 0], valid_set[1][:, :, 1]]
+    X_valid = valid_set[0].copy()
+    X_valid['cs_input'] = valid_set[1][:, :, 0]
+    X_valid['st_input'] = valid_set[1][:, :, 1]
 
-        y_train, y_valid = None, None
-    else:
-        X_train, X_valid = train_set[0], valid_set[0]
-        y_train, y_valid = to_cs_st(train_set[1]), to_cs_st(valid_set[1])
+    return X_train, None, X_valid, None
 
-    return X_train, y_train, X_valid, y_valid
+def get_loss_layer(loss):
+    return {
+        'aft': AFTLoss(len(wandb.config.events), name='AFT_loss'),
+        'cox': CoxLoss(len(wandb.config.events), wandb.config.event_weights, name='Cox_loss')
+    }[loss.lower()]
 
 def train():
     dataloaders = list()
@@ -143,13 +96,9 @@ def train():
         pickle.dump(g.means_and_stds, f)
 
     prediction_model = backbone(wandb.config, include_top=True, classification=False, classes=len(wandb.config.events))
-    trainable_model = get_trainable_model(prediction_model, AFTLoss(len(wandb.config.events), name='AFT_loss')) if wandb.config.loss == 'AFT' else prediction_model
+    trainable_model = get_trainable_model(prediction_model, get_loss_layer(wandb.config.loss))
 
-    loss = None if wandb.config.loss == 'AFT' else negative_hazard_log_likelihood(wandb.config.event_weights,
-                                                    wandb.config.output_l1_regularizer,
-                                                    wandb.config.output_l2_regularizer)
-
-    trainable_model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), loss=loss)
+    trainable_model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), loss=None)
     trainable_model.summary()
     wandb.log({'model_params': trainable_model.count_params()}, commit=False)
 
@@ -158,6 +107,7 @@ def train():
     callbacks = [
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         # LossChecker(train_set, valid_set),
+        LossVariableChecker(wandb.config.events),
         ConcordanceIndex(train_set, valid_set, wandb.config.events, prediction_model, reverse=c_index_reverse),
         LogBest(records=['val_loss', 'loss'] + 
                     ['{}_cindex'.format(event_name) for event_name in wandb.config.events] +
@@ -166,8 +116,6 @@ def train():
         WandbCallback(),
         EarlyStopping(monitor='val_loss', patience=50), # must be placed last otherwise it won't work
     ]
-
-    if wandb.config.loss == 'AFT': callbacks = [LossVariableChecker(wandb.config.events)] + callbacks
 
     X_train, y_train, X_valid, y_valid = get_train_valid(train_set, valid_set)
     trainable_model.fit(X_train, y_train, batch_size=wandb.config.batch_size, epochs=500,
@@ -182,11 +130,12 @@ def train():
         'LeftCropLike': LeftCropLike, 
         'CenterCropLike': CenterCropLike,
         'AFTLoss': AFTLoss,
+        'CoxLoss': CoxLoss,
     }
 
     model = load_model(os.path.join(wandb.run.dir, 'model-best.h5'),
                         custom_objects=custom_objects, compile=False)
-    prediction_model = to_prediction_model(model, wandb.config.include_info) if wandb.config.loss == 'AFT' else model
+    prediction_model = to_prediction_model(model, wandb.config.include_info)
 
     print('Training set:')
     evaluation(prediction_model, train_set, wandb.config.events, reverse=c_index_reverse)
@@ -231,7 +180,7 @@ if __name__ == '__main__':
 
         'prediction_head': False,
         
-        'include_info': False, # only works with audicor_10s
+        'include_info': True, # only works with audicor_10s
         'infos': ['sex', 'age', 'height', 'weight', 'BMI'],
         'info_apply_noise': True,
         'info_noise_stds': [0, 1, 1, 1, 0.25], # stds of gaussian noise
@@ -240,7 +189,7 @@ if __name__ == '__main__':
 
         'radam': True,
 
-        'loss': 'AFT',
+        'loss': 'Cox',
 
         # data
         'events': ['ADHF'], # 'MI', 'Stroke', 'CVD', 'Mortality'
@@ -250,7 +199,7 @@ if __name__ == '__main__':
         'output_l1_regularizer': 0, # 0 if disable
         'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
 
-        'datasets': ['audicor_10s', 'big_exam'], # 'big_exam', 'audicor_10s'
+        'datasets': ['audicor_10s'], # 'big_exam', 'audicor_10s'
 
         'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
         'big_exam_hs_channels': [8, 9],

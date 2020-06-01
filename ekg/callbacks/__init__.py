@@ -69,8 +69,9 @@ class LossVariableChecker(keras.callbacks.Callback):
         self.event_names = event_names
 
     def on_epoch_end(self, epoch, logs={}):
-        for log_std, event in zip(self.model.layers[-1].log_stds, self.event_names):
-            std = np.exp(K.get_value(log_std))[0]
+        if hasattr(self.model.layers[-1], 'log_stds'):
+            for log_std, event in zip(self.model.layers[-1].log_stds, self.event_names):
+                std = np.exp(K.get_value(log_std))[0]
 
-            print('{} std: {:.4f}'.format(event, std))
-            logs['{}_std'.format(event)] = std
+                print('{} std: {:.4f}'.format(event, std))
+                logs['{}_std'.format(event)] = std

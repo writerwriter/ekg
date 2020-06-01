@@ -11,7 +11,7 @@ import wandb
 from ..layers import LeftCropLike
 from ..layers.sincnet import SincConv1D
 from ..layers import CenterCropLike
-from ..losses import AFTLoss
+from ..losses import AFTLoss, CoxLoss
 
 from .train_utils import allow_gpu_growth; allow_gpu_growth()
 from .train_utils import set_wandb_config
@@ -204,7 +204,8 @@ def parse_wandb_models(path, number_models=-1, metric=None):
                             custom_objects={'SincConv1D': SincConv1D,
                                             'LeftCropLike': LeftCropLike,
                                             'CenterCropLike': CenterCropLike,
-                                            'AFTLoss': AFTLoss}, compile=False))
+                                            'AFTLoss': AFTLoss,
+                                            'CoxLoss': CoxLoss}, compile=False))
 
         configs.append(dict_to_config(run.config))
         model_paths.append(run.path)

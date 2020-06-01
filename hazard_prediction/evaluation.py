@@ -129,13 +129,11 @@ if __name__ == '__main__':
     g = BaseDataGenerator(dataloaders=dataloaders,
                             wandb_config=wandb_config,
                             preprocessing_fn=preprocessing)
+
+    # convert to prediction_model
+    models = [to_prediction_model(model, wandb_config.include_info) for model in models]
     
-    reverse = True
-    if wandb_config.loss == 'AFT':
-        # convert to prediction_model
-        for i in range(len(models)):
-            models[i] = to_prediction_model(models[i], wandb_config.include_info)
-        reverse = False
+    reverse = (wandb_config.loss != 'AFT')
 
     train_set, valid_set, test_set = g.get()
     print_statistics(train_set, valid_set, test_set, wandb_config.events)
