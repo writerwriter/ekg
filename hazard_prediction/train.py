@@ -85,61 +85,6 @@ def to_trainable_X(dataset):
     X['cs_input'], X['st_input'] = y[..., 0], y[..., 1]
     return X
 
-class HazardSequence(keras.utils.Sequence):
-    def __init__(self, X, y, batch_size, do_wavelet):
-        self.X, self.y, self.batch_size, self.do_wavelet = X, y, batch_size, do_wavelet
-
-    def n_instances(self):
-        _, value = list(self.X.items())[0] # get the first input
-        return value.shape[0]
-
-    def __len__(self):
-        return np.ceil(self.n_instances() / self.batch_size).astype(int)
-
-    @staticmethod
-    def __move_label_to_X(batch_X, batch_y):
-        batch_X['cs_input'] = batch_y[..., 0]
-        batch_X['st_input'] = batch_y[..., 1]
-        return batch_X
-
-    def __getitem__(self, index):
-        batch_X = dict()
-
-        batch_slice = np.s_[index * self.batch_size: min((index + 1) * self.batch_size, self.n_instances())]
-        for key, value in self.X.items():
-            batch_X[key] = value[batch_slice]
-
-        if self.do_wavelet:
-            if wandb.config.n_ekg_channels != 0:
-                batch_X['ekg_input'] = batch_X['ekg_hs_input'][..., :wandb.config.n_ekg_channels]
-            if wandb.config.n_hs_channels != 0:
-                hs = batch_X['ekg_hs_input'][..., -wandb.config.n_hs_channels:] # (?, n_samples, n_channels)
-                wavelet = np.zeros((hs.shape[0], 
-                                    wandb.config.wavelet_scale_length, 
-                                    hs.shape[1], wandb.config.n_hs_channels)) # (?, scale_length, n_samples, n_channels)
-                for i in range(hs.shape[0]):
-                    for j in range(hs.shape[-1]):
-                        wavelet[i, :, :, j] = generate_wavelet(hs[i, :, j], 
-                                                                wandb.config.sampling_rate, 
-                                                                wandb.config.wavelet_scale_length)
-                batch_X['hs_input'] = wavelet
-            batch_X.pop('ekg_hs_input')
-
-        if self.y is not None:
-            batch_y = self.y[batch_slice]
-            batch_X = self.__move_label_to_X(batch_X, batch_y)
-
-        return batch_X, None
-
-    def on_epoch_end(self):
-        # shuffle
-        shuffle_indices = shuffle(np.arange(self.n_instances()))
-        for key, value in self.X.items():
-            self.X[key] = value[shuffle_indices]
-
-        if self.y is not None:
-            self.y = self.y[shuffle_indices]
-
 def get_loss_layer(loss):
     return {
         'aft': AFTLoss(len(wandb.config.events), name='AFT_loss'),
