@@ -25,16 +25,15 @@ class LogBest(keras.callbacks.Callback):
 
 class ConcordanceIndex(keras.callbacks.Callback):
     def __init__(self, train_set, valid_set, event_names, prediction_model, reverse=True):
-        super(ConcordanceIndex, self).__init__()
-        self.train_set = train_set
-        self.valid_set = valid_set
+        super().__init__()
+        self.train_set, self.valid_set = train_set, valid_set
         self.event_names = event_names
         self.prediction_model = prediction_model
         self.reverse = reverse
 
     def on_epoch_end(self, epoch, logs={}):
-        X_train = self.train_set[0]
-        X_valid = self.valid_set[0]
+        X_train, y_train = self.train_set[0], self.train_set[1]
+        X_valid, y_valid = self.valid_set[0], self.valid_set[1]
 
         pred_train = self.prediction_model.predict(X_train) # (?, n_events)
         pred_valid = self.prediction_model.predict(X_valid)
@@ -44,8 +43,8 @@ class ConcordanceIndex(keras.callbacks.Callback):
             pred_valid = pred_valid * -1
 
         for i in range(len(self.event_names)):
-            cs_train, st_train = self.train_set[1][:, i, 0], self.train_set[1][:, i, 1]
-            cs_valid, st_valid = self.valid_set[1][:, i, 0], self.valid_set[1][:, i, 1]
+            cs_train, st_train = y_train[:, i, 0], y_train[:, i, 1]
+            cs_valid, st_valid = y_valid[:, i, 0], y_valid[:, i, 1]
 
             try:
                 train_cindex = concordance_index(st_train, pred_train[:, i], cs_train)

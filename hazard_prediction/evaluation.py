@@ -91,10 +91,7 @@ def to_prediction_model(trainable_model, include_info):
     from tensorflow.keras.models import Model
     # get the outputs of the prediction model
     original_output = trainable_model.get_layer('output')
-    if include_info:
-        return Model([trainable_model.input[0], trainable_model.input[1]], original_output.output)
-    else:
-        return Model(trainable_model.layers[0].input, original_output.output)
+    return Model([trainable_model.input[:-2]], [original_output.output])
 
 if __name__ == '__main__':
     from train import HazardBigExamLoader, HazardAudicor10sLoader

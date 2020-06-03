@@ -5,7 +5,9 @@ from functools import partial
 import multiprocessing as mp
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
+from sklearn.utils import shuffle
 import pywt
+from tensorflow import keras
 
 import better_exceptions; better_exceptions.hook()
 
@@ -278,7 +280,7 @@ def calculate_n_hs_channels(config):
 
     return n_hs_channels
 
-def generate_wavelet(signal, fs):
+def generate_wavelet(signal, fs, scale_length=25):
     '''Generate CWT signals of 22Hz - 75Hz.
     Args:
         signal: np.array of shape [n_samples]
@@ -288,10 +290,34 @@ def generate_wavelet(signal, fs):
         CWT_coef: np.array of shape [25, n_samples]
     '''
 
-    scale = np.arange(25) * (fs / 1000) + (fs / 1000) * 8
+    scale = np.arange(scale_length) * (fs / 1000) + (fs / 1000) * 8
     coef, freqs = pywt.cwt(signal, scale, 'cgau5', sampling_period=1/fs)
 
-    return coef
+    return np.abs(coef)
+
+def mp_generate_wavelet(hs, fs, scale_length, desc):
+    '''
+    Args:
+        hs: (?, n_samples, n_channels)
+
+    Outputs:
+        wavelet: (?, scale_length, n_samples, n_channels)
+    '''
+    n_instances = hs.shape[0]
+    hs = np.swapaxes(hs, 1, 2) # -> (?, n_channels, n_samples)
+    hs = hs.reshape(-1, hs.shape[-1])
+
+    wavelets = list()
+    __mp_gw = partial(generate_wavelet, fs=fs, scale_length=scale_length)
+
+    with mp.Pool(processes=8) as workers:
+        for wi in tqdm(workers.imap(__mp_gw, hs), total=hs.shape[0], desc=desc):
+            wavelets.append(wi)
+
+    wavelets = np.array(wavelets)
+    wavelets = wavelets.reshape((n_instances, -1, wavelets.shape[-2], wavelets.shape[-1]))
+    wavelets = np.moveaxis(wavelets, 1, -1) # -> (?, scale_length, n_samples, n_channels)
+    return wavelets
 
 if __name__ == '__main__':
     pass

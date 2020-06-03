@@ -25,11 +25,10 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from dataloader import HazardBigExamLoader, HazardAudicor10sLoader
 from dataloader import preprocessing
 from ekg.utils import data_utils
-from ekg.utils.data_utils import BaseDataGenerator
+from ekg.utils.data_utils import BaseDataGenerator, generate_wavelet
 from ekg.callbacks import LogBest, ConcordanceIndex
 
 from ekg.models.backbone import backbone
-from ekg.losses import negative_hazard_log_likelihood
 
 from evaluation import evaluation_plot, print_statistics
 from evaluation import evaluation, to_prediction_model
@@ -60,16 +59,86 @@ def get_trainable_model(prediction_model, loss_layer):
     else:
         return Model([prediction_model.input, cs_input, st_input], output)
 
-def get_train_valid(train_set, valid_set):
-    X_train = train_set[0].copy()
-    X_train['cs_input'] = train_set[1][:, :, 0]
-    X_train['st_input'] = train_set[1][:, :, 1]
+class HazardDataGenerator(BaseDataGenerator):
+    def __init__(self, do_wavelet, **kwargs):
+        self.do_wavelet = do_wavelet
+        super().__init__(**kwargs)
 
-    X_valid = valid_set[0].copy()
-    X_valid['cs_input'] = valid_set[1][:, :, 0]
-    X_valid['st_input'] = valid_set[1][:, :, 1]
+    def get(self):
+        train_set, valid_set, test_set = super().get()
 
-    return X_train, None, X_valid, None
+        if self.do_wavelet:
+            for X in [train_set[0], valid_set[0], test_set[0]]:
+                if self.config.n_ekg_channels != 0:
+                    X['ekg_input'] = X['ekg_hs_input'][..., :self.config.n_ekg_channels]
+                if self.config.n_hs_channels != 0:
+                    hs = X['ekg_hs_input'][..., -self.config.n_hs_channels:] # (?, n_samples, n_channels)
+                    X['hs_input'] = data_utils.mp_generate_wavelet(hs, 
+                                                                    wandb.config.sampling_rate, 
+                                                                    self.config.wavelet_scale_length,
+                                                                    'Generate Wavelets')
+                X.pop('ekg_hs_input')
+        return train_set, valid_set, test_set
+
+def to_trainable_X(dataset):
+    X, y = dataset[0].copy(), dataset[1]
+    X['cs_input'], X['st_input'] = y[..., 0], y[..., 1]
+    return X
+
+class HazardSequence(keras.utils.Sequence):
+    def __init__(self, X, y, batch_size, do_wavelet):
+        self.X, self.y, self.batch_size, self.do_wavelet = X, y, batch_size, do_wavelet
+
+    def n_instances(self):
+        _, value = list(self.X.items())[0] # get the first input
+        return value.shape[0]
+
+    def __len__(self):
+        return np.ceil(self.n_instances() / self.batch_size).astype(int)
+
+    @staticmethod
+    def __move_label_to_X(batch_X, batch_y):
+        batch_X['cs_input'] = batch_y[..., 0]
+        batch_X['st_input'] = batch_y[..., 1]
+        return batch_X
+
+    def __getitem__(self, index):
+        batch_X = dict()
+
+        batch_slice = np.s_[index * self.batch_size: min((index + 1) * self.batch_size, self.n_instances())]
+        for key, value in self.X.items():
+            batch_X[key] = value[batch_slice]
+
+        if self.do_wavelet:
+            if wandb.config.n_ekg_channels != 0:
+                batch_X['ekg_input'] = batch_X['ekg_hs_input'][..., :wandb.config.n_ekg_channels]
+            if wandb.config.n_hs_channels != 0:
+                hs = batch_X['ekg_hs_input'][..., -wandb.config.n_hs_channels:] # (?, n_samples, n_channels)
+                wavelet = np.zeros((hs.shape[0], 
+                                    wandb.config.wavelet_scale_length, 
+                                    hs.shape[1], wandb.config.n_hs_channels)) # (?, scale_length, n_samples, n_channels)
+                for i in range(hs.shape[0]):
+                    for j in range(hs.shape[-1]):
+                        wavelet[i, :, :, j] = generate_wavelet(hs[i, :, j], 
+                                                                wandb.config.sampling_rate, 
+                                                                wandb.config.wavelet_scale_length)
+                batch_X['hs_input'] = wavelet
+            batch_X.pop('ekg_hs_input')
+
+        if self.y is not None:
+            batch_y = self.y[batch_slice]
+            batch_X = self.__move_label_to_X(batch_X, batch_y)
+
+        return batch_X, None
+
+    def on_epoch_end(self):
+        # shuffle
+        shuffle_indices = shuffle(np.arange(self.n_instances()))
+        for key, value in self.X.items():
+            self.X[key] = value[shuffle_indices]
+
+        if self.y is not None:
+            self.y = self.y[shuffle_indices]
 
 def get_loss_layer(loss):
     return {
@@ -84,7 +153,8 @@ def train():
     if 'audicor_10s' in wandb.config.datasets:
         dataloaders.append(HazardAudicor10sLoader(wandb_config=wandb.config))
 
-    g = BaseDataGenerator(dataloaders=dataloaders,
+    g = HazardDataGenerator(do_wavelet=wandb.config.wavelet,
+                            dataloaders=dataloaders,
                             wandb_config=wandb.config,
                             preprocessing_fn=preprocessing)
 
@@ -106,7 +176,6 @@ def train():
 
     callbacks = [
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
-        # LossChecker(train_set, valid_set),
         LossVariableChecker(wandb.config.events),
         ConcordanceIndex(train_set, valid_set, wandb.config.events, prediction_model, reverse=c_index_reverse),
         LogBest(records=['val_loss', 'loss'] + 
@@ -117,9 +186,10 @@ def train():
         EarlyStopping(monitor='val_loss', patience=50), # must be placed last otherwise it won't work
     ]
 
-    X_train, y_train, X_valid, y_valid = get_train_valid(train_set, valid_set)
-    trainable_model.fit(X_train, y_train, batch_size=wandb.config.batch_size, epochs=500,
-                validation_data=(X_valid, y_valid), callbacks=callbacks, shuffle=True)
+    X_train, y_train, X_valid, y_valid = to_trainable_X(train_set), None, to_trainable_X(valid_set), None
+    trainable_model.fit(X_train, y_train, batch_size=wandb.config.batch_size, epochs=500, 
+                        validation_data=(X_valid, y_valid),
+                        callbacks=callbacks, shuffle=True)
     trainable_model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
 
     # load best model from wandb and evaluate
@@ -172,7 +242,7 @@ if __name__ == '__main__':
         'prediction_kernel_length': 5,
         'prediction_nfilters': 8,
 
-        'batch_size': 128,
+        'batch_size': 32,
         'kernel_initializer': 'glorot_uniform',
         'skip_connection': False,
         'crop_center': True,
@@ -180,7 +250,7 @@ if __name__ == '__main__':
 
         'prediction_head': False,
         
-        'include_info': True, # only works with audicor_10s
+        'include_info': False, # only works with audicor_10s
         'infos': ['sex', 'age', 'height', 'weight', 'BMI'],
         'info_apply_noise': True,
         'info_noise_stds': [0, 1, 1, 1, 0.25], # stds of gaussian noise
@@ -189,7 +259,11 @@ if __name__ == '__main__':
 
         'radam': True,
 
-        'loss': 'Cox',
+        'loss': 'AFT',
+
+        'wavelet': True,
+        'wavelet_scale_length': 25,
+        'wavelet_nfilters': 16,
 
         # data
         'events': ['ADHF'], # 'MI', 'Stroke', 'CVD', 'Mortality'
@@ -199,7 +273,7 @@ if __name__ == '__main__':
         'output_l1_regularizer': 0, # 0 if disable
         'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
 
-        'datasets': ['audicor_10s'], # 'big_exam', 'audicor_10s'
+        'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
 
         'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
         'big_exam_hs_channels': [8, 9],

@@ -1,11 +1,11 @@
 import tensorflow.keras.backend as K
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Lambda, BatchNormalization, GlobalAveragePooling1D
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, Dense, Add, Concatenate, Reshape
+from tensorflow.keras.layers import Conv1D, Conv2D, MaxPooling1D, MaxPooling2D, AveragePooling2D, Dense, Add, Concatenate, Reshape
 from tensorflow.keras.layers import GaussianNoise
 
 from ..layers import LeftCropLike, CenterCropLike
-from ..layers import squeeze_excite_block
+from ..layers import squeeze_excite_block_1d, squeeze_excite_block_2d
 from ..layers.sincnet import SincConv1D
 from ..layers.non_local import non_local_block
 
@@ -16,7 +16,7 @@ def _ekg_branch(input_data, nlayers, nfilters, kernel_length, kernel_initializer
         ekg = Conv1D(nfilters, kernel_length, activation='relu', padding='same',
                         kernel_initializer=kernel_initializer, name='ekg_branch_conv_{}'.format(i))(ekg)
         ekg = BatchNormalization(name='ekg_branch_bn_{}'.format(i))(ekg)
-        if se_block: ekg = squeeze_excite_block(ekg)
+        if se_block: ekg = squeeze_excite_block_1d(ekg)
 
         if i != 0 and skip_connection:
             ekg = Add(name='ekg_branch_skip_merge_{}'.format(i))([ekg, shortcut])
@@ -36,7 +36,7 @@ def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, h
         hs = Conv1D(hs_nfilters, kernel_length, activation='relu', padding='same',
                         kernel_initializer=kernel_initializer, name='{}conv_{}'.format(name_prefix, i+1))(hs)
         hs = BatchNormalization(name='{}bn_{}'.format(name_prefix, i+1))(hs)
-        if se_block: hs = squeeze_excite_block(hs)
+        if se_block: hs = squeeze_excite_block_1d(hs)
 
         if i != 0 and skip_connection:
             hs = Add(name='{}skip_merge_{}'.format(name_prefix, i+1))([hs, shortcut])
@@ -45,8 +45,56 @@ def _heart_sound_branch(input_data, sincconv_filter_length, sincconv_nfilters, h
 
     return hs
 
+def _wavelet_hs_branch(input_data, scale_length, nfilters, kernel_initializer, nlayers, se_block, skip_connection):
+    hs = input_data
+    hs = Conv2D(nfilters, (scale_length, 1), activation='relu', padding='same', 
+                    kernel_initializer=kernel_initializer, name='wavelet_hs_conv_0')(hs)
+    hs = BatchNormalization(name='wavelet_hs_bn_0')(hs)
+    hs = AveragePooling2D((2, 1), padding='same', name='wavelet_hs_avgpool_0')(hs) # (?, /2, 10000)
+
+    hs = Conv2D(nfilters, (scale_length//2, 1), activation='relu', padding='same', 
+                    kernel_initializer=kernel_initializer, name='wavelet_hs_conv_1')(hs)
+    hs = BatchNormalization(name='wavelet_hs_bn_1')(hs)
+    hs = AveragePooling2D((2, 1), padding='same', name='wavelet_hs_avgpool_1')(hs) # (?, /4, 10000)
+
+    for i in range(nlayers):
+        shortcut = hs
+        hs = Conv2D(nfilters, 3, activation='relu', padding='same',
+                        kernel_initializer=kernel_initializer, name='wavelet_hs_conv_{}'.format(i+2))(hs)
+        hs = BatchNormalization(name='wavelet_hs_bn_{}'.format(i+2))(hs)
+        if se_block: hs = squeeze_excite_block_2d(hs)
+
+        if i != 0 and skip_connection:
+            hs = Add(name='wavelet_skip_merge_{}'.format(i+2))([hs, shortcut])
+
+        hs = MaxPooling2D((2, 2), padding='same', name='wavelet_maxpool_{}'.format(i+2))(hs)
+
+    hs = Lambda(lambda hs: K.max(hs, axis=1))(hs)
+    return hs
+
 def backbone(config, include_top=False, classification=True, classes=2):
-    ekg_hs_input = Input((config.sampling_rate*10, config.n_ekg_channels + config.n_hs_channels), name='ekg_hs_input')
+    # inputs
+    inputs = list()
+    if config.wavelet:
+        if config.n_ekg_channels != 0:
+            ekg_input = Input((config.sampling_rate*10, config.n_ekg_channels), name='ekg_input')
+            inputs.append(ekg_input)
+
+        if config.n_hs_channels != 0:
+            heart_sound_input = Input((config.wavelet_scale_length, config.sampling_rate*10, config.n_hs_channels), name='hs_input')
+            inputs.append(heart_sound_input)
+    else:
+        ekg_hs_input = Input((config.sampling_rate*10, config.n_ekg_channels + config.n_hs_channels), name='ekg_hs_input')
+        inputs.append(ekg_hs_input)
+
+        if config.n_ekg_channels != 0:
+            ekg_input = Lambda(lambda x, n_ekg_channels: x[:, :, :n_ekg_channels], 
+                                    arguments={'n_ekg_channels': config.n_ekg_channels}, 
+                                    name='ekg_input')(ekg_hs_input) # (10000, 8)
+        if config.n_hs_channels != 0:
+            heart_sound_input = Lambda(lambda x, n_hs_channels: x[:, :, -n_hs_channels:], 
+                                    arguments={'n_hs_channels': config.n_hs_channels}, 
+                                    name='hs_input')(ekg_hs_input) # (10000, 2)
 
     if config.include_info:
         info_input = Input((len(config.infos), ), name='info_input') # sex, age, height, weight, BMI
@@ -59,12 +107,11 @@ def backbone(config, include_top=False, classification=True, classes=2):
                 this_info = Reshape((1, ))(this_info)
                 infos.append(GaussianNoise(stddev=config.info_noise_stds[i])(this_info))
             info = Concatenate(axis=-1, name='noise_info_input')(infos)
+
+        inputs.append(info_input)
     
     # ekg branch
     if config.n_ekg_channels != 0:
-        ekg_input = Lambda(lambda x, n_ekg_channels: x[:, :, :n_ekg_channels], 
-                                    arguments={'n_ekg_channels': config.n_ekg_channels}, 
-                                    name='ekg_input')(ekg_hs_input) # (10000, 8)
         ekg = _ekg_branch(ekg_input, 
                             config.branch_nlayers,
                             config.ekg_nfilters,
@@ -75,27 +122,32 @@ def backbone(config, include_top=False, classification=True, classes=2):
 
     # heart sound branch
     if config.n_hs_channels != 0:
-        heart_sound_input = Lambda(lambda x, n_hs_channels: x[:, :, -n_hs_channels:], 
-                                    arguments={'n_hs_channels': config.n_hs_channels}, 
-                                    name='hs_input')(ekg_hs_input) # (10000, 2)
-
-        hs_outputs = list()
-        for i in range(config.n_hs_channels):
-            hs = Lambda(lambda x, i: K.expand_dims(x[:, :, i], -1), 
-                                    arguments={'i': i}, 
-                                    name='hs_split_{}'.format(i))(heart_sound_input)
-            hs_outputs.append(_heart_sound_branch(hs, config.sincconv_filter_length,
-                                                        config.sincconv_nfilters, 
-                                                        config.hs_nfilters,
-                                                        config.sampling_rate,
-                                                        config.branch_nlayers,
-                                                        config.hs_kernel_length, config.kernel_initializer,
-                                                        config.se_block,
-                                                        config.skip_connection, name_prefix='hs_branch_{}_'.format(i)))
-        if config.n_hs_channels >= 2:
-            hs = Add(name='hs_merge')(hs_outputs)
-        else: # no need to merge
-            hs = hs_outputs[0]
+        if config.wavelet:
+            hs = _wavelet_hs_branch(heart_sound_input, 
+                                    config.wavelet_scale_length, 
+                                    config.wavelet_nfilters,
+                                    config.kernel_initializer, 
+                                    config.hs_nfilters, 
+                                    config.se_block, 
+                                    config.skip_connection)
+        else:
+            hs_outputs = list()
+            for i in range(config.n_hs_channels):
+                hs = Lambda(lambda x, i: K.expand_dims(x[:, :, i], -1), 
+                                        arguments={'i': i}, 
+                                        name='hs_split_{}'.format(i))(heart_sound_input)
+                hs_outputs.append(_heart_sound_branch(hs, config.sincconv_filter_length,
+                                                            config.sincconv_nfilters, 
+                                                            config.hs_nfilters,
+                                                            config.sampling_rate,
+                                                            config.branch_nlayers,
+                                                            config.hs_kernel_length, config.kernel_initializer,
+                                                            config.se_block,
+                                                            config.skip_connection, name_prefix='hs_branch_{}_'.format(i)))
+            if config.n_hs_channels >= 2:
+                hs = Add(name='hs_merge')(hs_outputs)
+            else: # no need to merge
+                hs = hs_outputs[0]
 
     # merge block
     if config.n_ekg_channels != 0 and config.n_hs_channels != 0:
@@ -113,7 +165,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
             output = Conv1D(config.final_nfilters, config.final_kernel_length, activation='relu', padding='same',
                                 kernel_initializer=config.kernel_initializer, name='final_conv_{}'.format(i))(output)
             output = BatchNormalization(name='final_bn_{}'.format(i))(output)
-            if config.se_block: output = squeeze_excite_block(output)
+            if config.se_block: output = squeeze_excite_block_1d(output)
 
             if i != 0 and config.skip_connection:
                 output = Add(name='final_skip_merge_{}'.format(i))([output, shortcut])
@@ -135,7 +187,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
                     head_output = Conv1D(config.prediction_nfilters, config.prediction_kernel_length, activation='relu', padding='same',
                                 kernel_initializer=config.kernel_initializer, name='pred_{}_conv_{}'.format(i_class, i))(head_output)
                     head_output = BatchNormalization(name='pred_{}_bn_{}'.format(i_class, i))(head_output)
-                    if config.se_block: head_output = squeeze_excite_block(head_output)
+                    if config.se_block: head_output = squeeze_excite_block_1d(head_output)
 
                     if i != 0 and config.skip_connection:
                         head_output = Add(name='pred_{}_skip_{}'.format(i_class, i))([head_output, shortcut])
@@ -168,8 +220,4 @@ def backbone(config, include_top=False, classification=True, classes=2):
 
             output = Dense(classes, activation='softmax' if classification else 'linear', name='output')(output) # classification or regression
 
-    if config.include_info:
-        model = Model(inputs=[ekg_hs_input, info_input], outputs=[output])
-    else:
-        model = Model(ekg_hs_input, output)
-    return model
+    return Model(inputs, [output])
