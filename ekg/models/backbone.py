@@ -125,9 +125,9 @@ def backbone(config, include_top=False, classification=True, classes=2):
         if config.wavelet:
             hs = _wavelet_hs_branch(heart_sound_input, 
                                     config.wavelet_scale_length, 
-                                    config.wavelet_nfilters,
+                                    config.hs_nfilters,
                                     config.kernel_initializer, 
-                                    config.hs_nfilters, 
+                                    config.branch_nlayers, 
                                     config.se_block, 
                                     config.skip_connection)
         else:

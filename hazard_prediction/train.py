@@ -132,7 +132,7 @@ def train():
     ]
 
     X_train, y_train, X_valid, y_valid = to_trainable_X(train_set), None, to_trainable_X(valid_set), None
-    trainable_model.fit(X_train, y_train, batch_size=wandb.config.batch_size, epochs=500, 
+    trainable_model.fit(X_train, y_train, batch_size=wandb.config.batch_size, epochs=1000, 
                         validation_data=(X_valid, y_valid),
                         callbacks=callbacks, shuffle=True)
     trainable_model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
@@ -208,7 +208,6 @@ if __name__ == '__main__':
 
         'wavelet': True,
         'wavelet_scale_length': 25,
-        'wavelet_nfilters': 16,
 
         # data
         'events': ['ADHF'], # 'MI', 'Stroke', 'CVD', 'Mortality'
