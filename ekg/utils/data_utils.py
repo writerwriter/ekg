@@ -120,19 +120,35 @@ class BaseDataGenerator:
                 return rtn
             return [np.append(set1[i], set2[i], axis=0) for i in range(2)]
 
-        train_set, valid_set, test_set = None, None, None
-        for dataloader in self.dataloaders:
-            tmp_train_set, tmp_valid_set, tmp_test_set = dataloader.get_split(rs)
+        def has_empty(datasets, threshold=2):
+            for dataset in datasets:
+                y = dataset[1]
+                for i in range(y.shape[1]):
+                    if (y[:, i, 0] == 1).sum() <= threshold: # # of signals with events
+                        return True
+            return False
 
-            # combine them
-            if train_set is None:
-                train_set, valid_set, test_set = tmp_train_set, tmp_valid_set, tmp_test_set
-            else:
-                train_set = combine(train_set, tmp_train_set)
-                valid_set = combine(valid_set, tmp_valid_set)
-                test_set = combine(test_set, tmp_test_set)
+        def split(rs):
+            train_set, valid_set, test_set = None, None, None
+            for dataloader in self.dataloaders:
+                tmp_train_set, tmp_valid_set, tmp_test_set = dataloader.get_split(rs)
 
-        return [train_set, valid_set, test_set]
+                # combine them
+                if train_set is None:
+                    train_set, valid_set, test_set = tmp_train_set, tmp_valid_set, tmp_test_set
+                else:
+                    train_set = combine(train_set, tmp_train_set)
+                    valid_set = combine(valid_set, tmp_valid_set)
+                    test_set = combine(test_set, tmp_test_set)
+            return train_set, valid_set, test_set
+
+        while True:
+            datasets = split(rs)
+            if has_empty(datasets):
+                rs += 1
+                continue
+
+            return list(datasets)
 
     def get(self):
         '''Split the data into training set, validation set, and testing set, and then normalize them by training set.

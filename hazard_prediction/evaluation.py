@@ -94,7 +94,7 @@ def to_prediction_model(trainable_model, include_info):
     return Model([trainable_model.input[:-2]], [original_output.output])
 
 if __name__ == '__main__':
-    from train import HazardBigExamLoader, HazardAudicor10sLoader
+    from train import HazardBigExamLoader, HazardAudicor10sLoader, HazardDataGenerator
     from train import preprocessing
 
     from ekg.utils.eval_utils import parse_wandb_models
@@ -123,7 +123,8 @@ if __name__ == '__main__':
     if 'audicor_10s' in wandb_config.datasets:
         dataloaders.append(HazardAudicor10sLoader(wandb_config=wandb_config))
 
-    g = BaseDataGenerator(dataloaders=dataloaders,
+    g = HazardDataGenerator(do_wavelet=wandb.config.wavelet,
+                            dataloaders=dataloaders,
                             wandb_config=wandb_config,
                             preprocessing_fn=preprocessing)
 

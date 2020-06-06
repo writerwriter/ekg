@@ -10,7 +10,6 @@ rope = "*"
 jupyter-tabnine = "*"
 
 [packages]
-better-exceptions = "*"
 wandb = "*"
 lifelines = "*"
 keras-rectified-adam = "*"
@@ -24,6 +23,7 @@ keras-radam = "*"
 tensorflow = "*"
 plotly = "*"
 libtmux = "*"
+better-exceptions = "*"
 
 [requires]
 python_version = "3.6"

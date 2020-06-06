@@ -33,14 +33,11 @@ def preprocessing(dataloader):
         dataloader.normal_y[censor_mask, i, 0] = 0 # cs: no event occurred
         dataloader.normal_y[censor_mask, i, 1] = dataloader.config.censoring_limit # st: censoring_limit
 
-def has_empty(dataset, thresholds=[5, 2]):
-    y = dataset[1]
-    for i in range(y.shape[1]):
-        if (y[:, i, 0] == 1).sum() <= thresholds[i]: # # of signals with events
-            return True
-    return False
-
 class HazardBigExamLoader(BigExamLoader):
+    def load_abnormal_info(self):
+        df = pd.read_csv(os.path.join(self.datadir, 'abnormal_event.csv'))
+        return np.tile(df[self.config.infos].values, [len(self.channel_set), 1])
+
     def load_abnormal_y(self):
         '''
         Output:
@@ -56,24 +53,6 @@ class HazardBigExamLoader(BigExamLoader):
             y[:, i, 1] = df['{}_survival_time'.format(event_name)].values
 
         return np.tile(y, [len(self.channel_set), 1, 1])
-
-    def get_split(self, rs=42):
-        datasets = super().get_split(rs)
-
-        # do split again if there's any set with empty events
-        if len(self.config.datasets) == 1:
-            while True:
-                do_again = False
-                for dataset in datasets:
-                    if has_empty(dataset):
-                        do_again = True
-                        break
-                if do_again:
-                    rs += 1
-                    datasets = super().get_split(rs)
-                else:
-                    break # no empty event in any set
-        return datasets
 
 class HazardAudicor10sLoader(Audicor10sLoader):
     def load_abnormal_filenames(self):
@@ -101,7 +80,7 @@ class HazardAudicor10sLoader(Audicor10sLoader):
                                 how='left')
         merged_df = merged_df.replace(np.nan, -1) # replace nan with -1
         infos = merged_df[self.config.infos].values
-        return infos
+        return np.tile(infos, [len(self.channel_set), 1])
 
     def load_abnormal_y(self):
         '''
@@ -133,24 +112,6 @@ class HazardAudicor10sLoader(Audicor10sLoader):
                 y[ filename_df.filename.str.contains('screen').values , i, 0] = -1 # cs == -1 for ignoring
 
         return np.tile(y, [len(self.channel_set), 1, 1])
-
-    def get_split(self, rs=42):
-        datasets = super().get_split(rs)
-
-        # do split again if there's any set with empty events
-        if len(self.config.datasets) == 1:
-            while True:
-                do_again = False
-                for dataset in datasets:
-                    if has_empty(dataset):
-                        do_again = True
-                        break
-                if do_again:
-                    rs += 1
-                    datasets = super().get_split(rs)
-                else:
-                    break # no empty event in any set
-        return datasets
 
 def load_normal_y(self):
     '''

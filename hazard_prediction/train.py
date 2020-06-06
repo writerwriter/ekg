@@ -110,6 +110,9 @@ def train():
     with open(os.path.join(wandb.run.dir, 'means_and_stds.pl'), 'wb') as f:
         pickle.dump(g.means_and_stds, f)
 
+    if wandb.config.include_info and wandb.config.info_apply_noise:
+        wandb.config.info_norm_noise_std = np.array(wandb.config.info_noise_stds) / np.array(g.means_and_stds[1][1])
+
     prediction_model = backbone(wandb.config, include_top=True, classification=False, classes=len(wandb.config.events))
     trainable_model = get_trainable_model(prediction_model, get_loss_layer(wandb.config.loss))
 
@@ -195,23 +198,23 @@ if __name__ == '__main__':
 
         'prediction_head': False,
         
-        'include_info': False, # only works with audicor_10s
-        'infos': ['sex', 'age', 'height', 'weight', 'BMI'],
-        'info_apply_noise': True,
-        'info_noise_stds': [0, 1, 1, 1, 0.25], # stds of gaussian noise
+        'include_info': True, # only works with audicor_10s
+        'infos': ['sex', 'age'], # , 'height', 'weight', 'BMI'],
+        'info_apply_noise': True, # NOTE: must be False for now
+        'info_noise_stds': [0, 1], # , 1, 1, 0.25 # stds of gaussian noise # NOTE: These values are not working due to the normalization of infos
         'info_nlayers': 2,
         'info_units': 8,
 
         'radam': True,
 
-        'loss': 'AFT',
+        'loss': 'Cox', # Cox, AFT
 
         'wavelet': True,
         'wavelet_scale_length': 25,
 
         # data
-        'events': ['ADHF'], # 'MI', 'Stroke', 'CVD', 'Mortality'
-        'event_weights': [1],
+        'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD', 'Mortality'
+        'event_weights': [1, 1],
         'censoring_limit': 400, # 99999 if no limit specified
 
         'output_l1_regularizer': 0, # 0 if disable

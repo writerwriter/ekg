@@ -105,7 +105,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
             for i, info_string in enumerate(config.infos):
                 this_info = Lambda(lambda x, i: x[:, i], arguments={'i': i}, name='{}_input'.format(info_string))(info)
                 this_info = Reshape((1, ))(this_info)
-                infos.append(GaussianNoise(stddev=config.info_noise_stds[i])(this_info))
+                infos.append(GaussianNoise(stddev=config.info_norm_noise_std[i])(this_info))
             info = Concatenate(axis=-1, name='noise_info_input')(infos)
 
         inputs.append(info_input)

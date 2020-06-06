@@ -134,12 +134,12 @@
     * Both EKG and Heart Sound
         * Cox
             * Concordance Index - ADHF / Mortality
-                | Training data      | Validation Data | Testing Data  | Best Model    | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note                              |
-                | ------------------ | --------------- | ------------- | ------------- | ---------------- | ---------------- | ---------- | --------------------------------- |
-                | 0.49 * B           | 0.21 * B        | 0.3 * B       |               |                  |                  |            |                                   |
-                | 0.49 * A           | 0.21 * A        | 0.3 * A       |               |                  |                  |            |                                   |
-                | 0.49 * (B + A)     | 0.21 * (B + A)  | 0.3 * (B + A) | 0.510 / 0.490 | 0.517 / 0.483    | 0.531 / 0.509    | `p1qlmfj5` | censoring 400, normal in training |
-                | 1.0 * B + 0.49 * A | 0.21 * A        | 0.3 * A       |               |                  |                  |            |                                   |
+                | Training data      | Validation Data | Testing Data  | Best Model      | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note                                            |
+                | ------------------ | --------------- | ------------- | --------------- | ---------------- | ---------------- | ---------- | ----------------------------------------------- |
+                | 0.49 * B           | 0.21 * B        | 0.3 * B       |                 |                  |                  |            |                                                 |
+                | 0.49 * A           | 0.21 * A        | 0.3 * A       |                 |                  |                  |            |                                                 |
+                | 0.49 * (B + A)     | 0.21 * (B + A)  | 0.3 * (B + A) | 0.5956 / 0.6201 | 0.5936 / 0.6359  | 0.5948 / 0.6493  | `ldui46cc` | censoring inf, hs wavelet, with info - sex, age |
+                | 1.0 * B + 0.49 * A | 0.21 * A        | 0.3 * A       |                 |                  |                  |            |                                                 |
         * AFT
             * Concordance Index - ADHF / Mortality
                 | Training data      | Validation Data | Testing Data  | Best Model    | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note          |

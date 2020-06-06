@@ -13,22 +13,22 @@ base_setting = {
     },
 
     'parameters':{
-        'sincconv_filter_length':{
-            'min': 16,
-            'max': 128
-        },
-        'sincconv_nfilters':{
-            'values': [8, 16, 32]
-        },
+        # 'sincconv_filter_length':{
+        #     'min': 16,
+        #     'max': 128
+        # },
+        # 'sincconv_nfilters':{
+        #     'values': [8, 16, 32]
+        # },
         'branch_nlayers':{
             'values': [1, 2, 3, 4, 5]
         },
         'ekg_kernel_length':{
             'values': [5, 7, 13, 21, 35]
         },
-        'hs_kernel_length':{
-            'values': [5, 7, 13, 21, 35]
-        },
+        # 'hs_kernel_length':{
+        #     'values': [5, 7, 13, 21, 35]
+        # },
         'ekg_nfilters':{
             'values': [1, 2, 4, 8, 16, 32]
         },
@@ -103,11 +103,11 @@ def generate_sweep(task, dataset, hs_ekg_setting, info_setting):
         events = ['ADHF', 'Mortality'] + (['MI', 'CVD'] if dataset == 'big_exam' else []) # Stoke
         set_parameters(sweep, 'events', events)
         set_parameters(sweep, 'event_weights', [1 for _ in events])
-        # set_parameters(sweep, 'censoring_limit', 400 if dataset == 'hybrid/audicor_as_test' else 99999)
-        set_parameters(sweep, 'censoring_limit', 400)
-        set_parameters(sweep, 'batch_size', 128)
+        set_parameters(sweep, 'censoring_limit', 400 if dataset == 'hybrid/audicor_as_test' else 99999)
+        # set_parameters(sweep, 'censoring_limit', 400)
+        set_parameters(sweep, 'batch_size', 64)
 
-        set_parameters(sweep, 'loss', 'AFT')
+        set_parameters(sweep, 'loss', 'Cox')
 
         set_parameters(sweep, 'include_info', info_setting == 'with_info')
         if info_setting == 'with_info':

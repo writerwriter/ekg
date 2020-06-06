@@ -145,6 +145,10 @@ def generate_survival_data(event_names=None):
     # remove duration data
     output_df = output_df.drop(columns=['follow_dur'] + [en + '_dur' for en in event_names])
 
+    # append info(sex and age)
+    output_df = output_df.merge(right=ahf2017_df[['code', 'sex', 'age']], left_on='subject_id', right_on='code', how='left').drop(columns='code')
+    output_df.loc[output_df.sex.isnull(), 'sex'] = output_df.sex.mode()[0] # replace missing sex with the most frequent value (mode)
+
     return output_df
 
 def mp_get_ekg(filenames, do_bandpass_filter=True, filter_lowcut=30, filter_highcut=100, desc='Loading data'):
