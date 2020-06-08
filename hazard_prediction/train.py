@@ -200,14 +200,14 @@ if __name__ == '__main__':
         
         'include_info': True, # only works with audicor_10s
         'infos': ['sex', 'age'], # , 'height', 'weight', 'BMI'],
-        'info_apply_noise': True, # NOTE: must be False for now
-        'info_noise_stds': [0, 1], # , 1, 1, 0.25 # stds of gaussian noise # NOTE: These values are not working due to the normalization of infos
+        'info_apply_noise': True,
+        'info_noise_stds': [0, 1], # , 1, 1, 0.25 # stds of gaussian noise
         'info_nlayers': 2,
         'info_units': 8,
 
         'radam': True,
 
-        'loss': 'Cox', # Cox, AFT
+        'loss': 'AFT', # Cox, AFT
 
         'wavelet': True,
         'wavelet_scale_length': 25,
@@ -215,7 +215,7 @@ if __name__ == '__main__':
         # data
         'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD', 'Mortality'
         'event_weights': [1, 1],
-        'censoring_limit': 400, # 99999 if no limit specified
+        'censoring_limit': 99999, # 99999 if no limit specified
 
         'output_l1_regularizer': 0, # 0 if disable
         'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1

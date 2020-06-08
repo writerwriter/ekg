@@ -11,7 +11,8 @@ def preprocessing(dataloader):
     remove_mask = np.zeros((dataloader.abnormal_y.shape[0], ), dtype=bool) # all False
 
     for i, event_name in enumerate(dataloader.config.events):
-        remove_mask = np.logical_or(remove_mask, dataloader.abnormal_y[:, i, 0] == -1)
+        remove_mask = np.logical_or(remove_mask, dataloader.abnormal_y[:, i, 0] == -1) # cs == -1
+        remove_mask = np.logical_or(remove_mask, dataloader.abnormal_y[:, i, 1] == 0) # st == 0
 
     if dataloader.config.include_info:
         for i, info in enumerate(dataloader.config.infos):

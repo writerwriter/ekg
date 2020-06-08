@@ -59,7 +59,7 @@ class AFTLoss(tf.keras.layers.Layer):
     def build(self, input_shape=None):
         for i in range(self.n_events):
             self.log_stds.append(self.add_weight(name='log_std_{}'.format(i), shape=(1, ), 
-                                        initializer=tf.keras.initializers.Constant(2), 
+                                        initializer=tf.keras.initializers.Constant(0), 
                                         trainable=True))
         
         super().build(input_shape)
@@ -83,7 +83,7 @@ class AFTLoss(tf.keras.layers.Layer):
             risks.append(risk)
 
             # log MLE of AFT
-            zi = ( K.log(st + 1) - risk ) / K.exp(self.log_stds[i_event])
+            zi = ( K.log(st) - risk ) / K.exp(self.log_stds[i_event])
             loss = K.mean( self.log_stds[i_event] * cs - cs * zi + K.exp(zi))
             total_loss += loss
 

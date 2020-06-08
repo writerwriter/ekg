@@ -3,6 +3,7 @@ import numpy as np
 from tensorflow import keras
 import tensorflow.keras.backend as K
 from lifelines.utils import concordance_index
+import gc
 
 class LogBest(keras.callbacks.Callback):
     def __init__(self, monitor='val_loss', records=['val_loss', 'loss', 'val_acc', 'acc']):
@@ -37,6 +38,8 @@ class ConcordanceIndex(keras.callbacks.Callback):
 
         pred_train = self.prediction_model.predict(X_train) # (?, n_events)
         pred_valid = self.prediction_model.predict(X_valid)
+
+        gc.collect() # try to fix memory leak
 
         if self.reverse:
             pred_train = pred_train * -1

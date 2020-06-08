@@ -107,7 +107,7 @@ def generate_sweep(task, dataset, hs_ekg_setting, info_setting):
         # set_parameters(sweep, 'censoring_limit', 400)
         set_parameters(sweep, 'batch_size', 64)
 
-        set_parameters(sweep, 'loss', 'Cox')
+        set_parameters(sweep, 'loss', 'AFT')
 
         set_parameters(sweep, 'include_info', info_setting == 'with_info')
         if info_setting == 'with_info':

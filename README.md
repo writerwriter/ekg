@@ -142,9 +142,9 @@
                 | 1.0 * B + 0.49 * A | 0.21 * A        | 0.3 * A       |                 |                  |                  |            |                                                 |
         * AFT
             * Concordance Index - ADHF / Mortality
-                | Training data      | Validation Data | Testing Data  | Best Model    | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note          |
-                | ------------------ | --------------- | ------------- | ------------- | ---------------- | ---------------- | ---------- | ------------- |
-                | 0.49 * B           | 0.21 * B        | 0.3 * B       |               |                  |                  |            |               |
-                | 0.49 * A           | 0.21 * A        | 0.3 * A       |               |                  |                  |            |               |
-                | 0.49 * (B + A)     | 0.21 * (B + A)  | 0.3 * (B + A) | 0.570 / 0.604 |                  |                  | `1ejzsjh0` | censoring 400 |
-                | 1.0 * B + 0.49 * A | 0.21 * A        | 0.3 * A       |               |                  |                  |            |               |
+                | Training data      | Validation Data | Testing Data  | Best Model      | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note                                            |
+                | ------------------ | --------------- | ------------- | --------------- | ---------------- | ---------------- | ---------- | ----------------------------------------------- |
+                | 0.49 * B           | 0.21 * B        | 0.3 * B       |                 |                  |                  |            |                                                 |
+                | 0.49 * A           | 0.21 * A        | 0.3 * A       |                 |                  |                  |            |                                                 |
+                | 0.49 * (B + A)     | 0.21 * (B + A)  | 0.3 * (B + A) | 0.5869 / 0.6537 | 0.6111 / 0.6642  | 0.6148 / 0.6594  | `d345t3sz` | censoring inf, hs wavelet, with info - sex, age |
+                | 1.0 * B + 0.49 * A | 0.21 * A        | 0.3 * A       |                 |                  |                  |            |                                                 |

@@ -143,7 +143,7 @@ if __name__ == '__main__':
     log_evaluation(models, valid_set, 'best_val', wandb_config.events, reverse)
 
     print('Testing set:')
-    evaluation(models, test_set, wandb_config.events)
+    evaluation(models, test_set, wandb_config.events, reverse)
 
     evaluation_plot(models, train_set, train_set, 'training - ', reverse)
     evaluation_plot(models, train_set, valid_set, 'validation - ', reverse)
