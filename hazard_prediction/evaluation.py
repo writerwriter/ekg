@@ -50,7 +50,7 @@ def log_evaluation(models, test_set, log_prefix, event_names, reverse=True):
         log_name = '{}_{}_cindex'.format(log_prefix, event_name)
         wandb.log({log_name: cindex})
 
-def evaluation_plot(models, train_set, run_set, prefix='', reverse=True):
+def evaluation_plot(models, train_set, run_set, prefix='', reverse=True, scatter_exp=False, scatter_xlabel='predicted risk'):
     # upload plots
     try:
         train_pred = models.predict(train_set[0])
@@ -68,10 +68,10 @@ def evaluation_plot(models, train_set, run_set, prefix='', reverse=True):
     # scatter
     for i, event_name in enumerate(wandb.config.events):
         wandb.log({'{}best model {} scatter'.format(prefix, event_name): 
-                        wandb.Image(get_survival_scatter(run_pred[:, i], 
+                        wandb.Image(get_survival_scatter(np.exp(run_pred[:, i]) if scatter_exp else run_pred[:, i],
                                                         run_set[1][:, i, 0], 
                                                         run_set[1][:, i, 1], 
-                                                        event_name, reverse=reverse))})
+                                                        event_name, reverse=reverse, xlabel=scatter_xlabel))})
         plt.close()
 
 def print_statistics(train_set, valid_set, test_set, event_names):
@@ -101,17 +101,12 @@ if __name__ == '__main__':
     from ekg.utils.eval_utils import get_evaluation_args, evaluation_log
     from ekg.utils.data_utils import BaseDataGenerator
 
-    wandb.init(project='ekg-hazard_prediction', entity='toosyou')
-
     # get arguments
     args = get_evaluation_args('Hazard prediction evaluation.')
 
     # parse models and configs
     models, wandb_configs, model_paths, sweep_name = parse_wandb_models(args.paths, args.n_model, args.metric)
-
-    evaluation_log(wandb_configs, sweep_name, 
-                    args.paths[0] if args.n_model >= 1 else '',
-                    model_paths)
+    numbers_models = args.n_model if args.n_model is not None else [len(models)]
 
     models[0].summary()
 
@@ -123,7 +118,7 @@ if __name__ == '__main__':
     if 'audicor_10s' in wandb_config.datasets:
         dataloaders.append(HazardAudicor10sLoader(wandb_config=wandb_config))
 
-    g = HazardDataGenerator(do_wavelet=wandb.config.wavelet,
+    g = HazardDataGenerator(do_wavelet=wandb_config.wavelet,
                             dataloaders=dataloaders,
                             wandb_config=wandb_config,
                             preprocessing_fn=preprocessing)
@@ -131,20 +126,30 @@ if __name__ == '__main__':
     # convert to prediction_model
     models = [to_prediction_model(model, wandb_config.include_info) for model in models]
     
-    reverse = (wandb_config.loss != 'AFT')
+    reverse, scatter_exp = (wandb_config.loss != 'AFT'), (wandb_config.loss == 'AFT')
+    scatter_xlabel = 'predicted survival time (days)'if wandb_config.loss == 'AFT' else 'predicted risk'
 
     train_set, valid_set, test_set = g.get()
     print_statistics(train_set, valid_set, test_set, wandb_config.events)
 
-    print('Training set:')
-    log_evaluation(models, train_set, 'best', wandb_config.events, reverse)
+    for n_model in numbers_models:
+        wandb.init(project='ekg-hazard_prediction', entity='toosyou', reinit=True)
 
-    print('Validation set:')
-    log_evaluation(models, valid_set, 'best_val', wandb_config.events, reverse)
+        evaluation_log(wandb_configs[:n_model], sweep_name, 
+                        args.paths[0] if args.n_model is not None else '',
+                        model_paths[:n_model])
 
-    print('Testing set:')
-    evaluation(models, test_set, wandb_config.events, reverse)
+        model_set = models[:n_model]
 
-    evaluation_plot(models, train_set, train_set, 'training - ', reverse)
-    evaluation_plot(models, train_set, valid_set, 'validation - ', reverse)
-    evaluation_plot(models, train_set, test_set, 'testing - ', reverse)
+        print('Training set:')
+        log_evaluation(model_set, train_set, 'best', wandb_config.events, reverse)
+
+        print('Validation set:')
+        log_evaluation(model_set, valid_set, 'best_val', wandb_config.events, reverse)
+
+        print('Testing set:')
+        evaluation(model_set, test_set, wandb_config.events, reverse)
+
+        evaluation_plot(model_set, train_set, train_set, 'training - ', reverse, scatter_exp, scatter_xlabel)
+        evaluation_plot(model_set, train_set, valid_set, 'validation - ', reverse, scatter_exp, scatter_xlabel)
+        evaluation_plot(model_set, train_set, test_set, 'testing - ', reverse, scatter_exp, scatter_xlabel)

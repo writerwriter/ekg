@@ -112,7 +112,7 @@ def get_KM_plot(train_pred, test_pred, test_true, event_name, reverse=True):
     plt.tight_layout()
     return plt
 
-def get_survival_scatter(y_pred, cs_true, st_true, event_name, reverse=True):
+def get_survival_scatter(y_pred, cs_true, st_true, event_name, reverse=True, xlabel='predicted risk'):
     '''
     Args:
         y_pred: np.array of shape (n_samples)
@@ -129,7 +129,7 @@ def get_survival_scatter(y_pred, cs_true, st_true, event_name, reverse=True):
     abnormal_mask = (cs_true == 1)
     plt.scatter(y_pred[abnormal_mask], st_true[abnormal_mask], marker=6, s=100, c='#ff1a1a', label='event occured')
 
-    plt.xlabel('predicted risk')
+    plt.xlabel(xlabel)
     plt.ylabel('survival time (days)')
 
     if reverse: y_pred = y_pred * -1
@@ -173,12 +173,13 @@ def dict_to_config(d):
         setattr(config, key, value)
     return config
 
-def parse_wandb_models(path, number_models=-1, metric=None):
+def parse_wandb_models(path, numbers_models=None, metric=None):
     '''Parse wandb models with either run paths or a sweep path.
     
     Args:
         path: a list contains either run paths or a sweep path
-        number_models: if negative, treat path as run paths, otherwise treat it as a sweep path.
+        numbers_models: a list of numbers of models.
+                        if None, treat path as run paths, otherwise treat it as a sweep path.
         metric: metric to sort by when parsing a sweep path
     '''
     api = wandb.Api()
@@ -187,16 +188,17 @@ def parse_wandb_models(path, number_models=-1, metric=None):
 
     modeldir = tempfile.mkdtemp()
 
-    if number_models > 0: # sweep
+    if numbers_models is not None: # sweep
         sweep = api.sweep(path[0])
         sweep_name = sweep.config.get('name', '')
         # sort runs by metric
         runs = sorted(sweep.runs, key=lambda run: run.summary.get(metric, np.Inf if 'loss' in metric else 0), 
                             reverse=False if 'loss' in metric else True)
+        runs = runs[:max(numbers_models)]
     else:
         runs = [api.run(p) for p in path]
 
-    for run in runs[:number_models]:
+    for run in runs:
         run.file('model-best.h5').download(replace=True, root=modeldir)
 
         # load model
@@ -214,13 +216,13 @@ def parse_wandb_models(path, number_models=-1, metric=None):
 
 def get_evaluation_args(description):
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument('-n', '--n_model', type=int, default=-1,
+    parser.add_argument('paths', metavar='paths', type=str, nargs='+',
+                        help='Run paths or a sweep path of wandb to be evaluated. If n_model >= 1, it will be treated as sweep path.')
+    parser.add_argument('-n', '--n_model', type=int, default=None, nargs='+',
                             help='Number of best models to evaluate.')
     parser.add_argument('-m', '--metric', type=str, default='best_val_loss',
                             help='Which metric to use for selecting best models from the sweep.')
-    parser.add_argument('paths', metavar='paths', type=str, nargs='+',
-                        help='Run paths or a sweep path of wandb to be evaluated. If n_model >= 1, it will be treated as sweep path.')
-
+    
     args = parser.parse_args()
 
     return args

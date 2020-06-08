@@ -74,7 +74,7 @@ class HazardDataGenerator(BaseDataGenerator):
                 if self.config.n_hs_channels != 0:
                     hs = X['ekg_hs_input'][..., -self.config.n_hs_channels:] # (?, n_samples, n_channels)
                     X['hs_input'] = data_utils.mp_generate_wavelet(hs, 
-                                                                    wandb.config.sampling_rate, 
+                                                                    self.config.sampling_rate, 
                                                                     self.config.wavelet_scale_length,
                                                                     'Generate Wavelets')
                 X.pop('ekg_hs_input')
