@@ -120,7 +120,8 @@ def train():
     trainable_model.summary()
     wandb.log({'model_params': trainable_model.count_params()}, commit=False)
 
-    c_index_reverse = (wandb.config.loss != 'AFT')
+    c_index_reverse, scatter_exp = (wandb.config.loss != 'AFT'), (wandb.config.loss == 'AFT')
+    scatter_xlabel = 'predicted survival time (days)'if wandb.config.loss == 'AFT' else 'predicted risk'
 
     callbacks = [
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
@@ -161,9 +162,9 @@ def train():
     print('Testing set:')
     evaluation(prediction_model, test_set, wandb.config.events, reverse=c_index_reverse)
 
-    evaluation_plot(prediction_model, train_set, train_set, 'training - ', reverse=c_index_reverse)
-    evaluation_plot(prediction_model, train_set, valid_set, 'validation - ', reverse=c_index_reverse)
-    evaluation_plot(prediction_model, train_set, test_set, 'testing - ', reverse=c_index_reverse)
+    evaluation_plot(prediction_model, train_set, train_set, 'training - ', reverse=c_index_reverse, scatter_exp=scatter_exp, scatter_xlabel=scatter_xlabel)
+    evaluation_plot(prediction_model, train_set, valid_set, 'validation - ', reverse=c_index_reverse, scatter_exp=scatter_exp, scatter_xlabel=scatter_xlabel)
+    evaluation_plot(prediction_model, train_set, test_set, 'testing - ', reverse=c_index_reverse, scatter_exp=scatter_exp, scatter_xlabel=scatter_xlabel)
 
 if __name__ == '__main__':
     wandb.init(project='ekg-hazard_prediction', entity='toosyou')
@@ -173,16 +174,16 @@ if __name__ == '__main__':
         'sincconv_filter_length': 63,
         'sincconv_nfilters': 8,
 
-        'branch_nlayers': 2,
+        'branch_nlayers': 3,
 
-        'ekg_kernel_length': 13,
+        'ekg_kernel_length': 21,
         'hs_kernel_length': 35,
 
-        'ekg_nfilters': 2,
+        'ekg_nfilters': 1,
         'hs_nfilters': 2,
 
-        'final_nlayers': 5,
-        'final_kernel_length': 5,
+        'final_nlayers': 4,
+        'final_kernel_length': 21,
         'final_nonlocal_nlayers': 0,
         'final_nfilters': 8,
 
@@ -190,7 +191,7 @@ if __name__ == '__main__':
         'prediction_kernel_length': 5,
         'prediction_nfilters': 8,
 
-        'batch_size': 32,
+        'batch_size': 64,
         'kernel_initializer': 'glorot_uniform',
         'skip_connection': False,
         'crop_center': True,
@@ -202,10 +203,10 @@ if __name__ == '__main__':
         'infos': ['sex', 'age'], # , 'height', 'weight', 'BMI'],
         'info_apply_noise': True,
         'info_noise_stds': [0, 1], # , 1, 1, 0.25 # stds of gaussian noise
-        'info_nlayers': 2,
-        'info_units': 8,
+        'info_nlayers': 5,
+        'info_units': 64,
 
-        'radam': True,
+        'radam': False,
 
         'loss': 'AFT', # Cox, AFT
 
