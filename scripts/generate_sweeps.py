@@ -60,7 +60,7 @@ base_setting = {
             'values': [True, False]
         },
         'radam':{
-            'values': [True, False]
+            'values': [False] # True, 
         }
     }
 }

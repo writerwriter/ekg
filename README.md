@@ -148,3 +148,7 @@
                 | 0.49 * A           | 0.21 * A        | 0.3 * A       |                 |                  |                  |            |                                                 |
                 | 0.49 * (B + A)     | 0.21 * (B + A)  | 0.3 * (B + A) | 0.5869 / 0.6537 | 0.6111 / 0.6642  | 0.6148 / 0.6594  | `d345t3sz` | censoring inf, hs wavelet, with info - sex, age |
                 | 1.0 * B + 0.49 * A | 0.21 * A        | 0.3 * A       |                 |                  |                  |            |                                                 |
+
+            * Info baseline - Concordance Index - ADHF / Mortality = 0.5502 / 0.5643
+                * Train, Valid, Test = 0.49 * (B + A), 0.21 * (B + A), 0.3 * (B + A)
+                * Run path: `25e2ayy8`
