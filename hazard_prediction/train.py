@@ -91,6 +91,36 @@ def get_loss_layer(loss):
         'cox': CoxLoss(len(wandb.config.events), wandb.config.event_weights, name='Cox_loss')
     }[loss.lower()]
 
+def train_AFT(trainable_model, X_train, y_train, X_valid, y_valid, callbacks):
+    for layer in trainable_model.layers[:-1]: # except the last layer
+        layer.trainable = False
+    trainable_model.layers[-1].trainable = True # sigma
+
+    epoch = 0
+    stopped_epoch = 0
+    stopped_times = 0
+    for i in range(100):
+        for layer in trainable_model.layers:
+            layer.trainable = not layer.trainable
+        print('Training Sigma:', trainable_model.layers[-1].trainable)
+        trainable_model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), loss=None)
+        
+        epoch_to_run = 10 if trainable_model.layers[-1].trainable else 50
+        trainable_model.fit(X_train, y_train, batch_size=wandb.config.batch_size, 
+                            initial_epoch=epoch,
+                            epochs=epoch + epoch_to_run, 
+                            validation_data=(X_valid, y_valid),
+                            callbacks=callbacks, shuffle=True)
+
+        if callbacks[-1].stopped_epoch > stopped_epoch: # early stopped
+            epoch = stopped_epoch = callbacks[-1].stopped_epoch
+            stopped_times += 1
+            if stopped_times == 4:
+                break
+        else:
+            epoch += epoch_to_run
+    return trainable_model
+
 def train():
     dataloaders = list()
     if 'big_exam' in wandb.config.datasets:
@@ -132,13 +162,20 @@ def train():
                     ['val_{}_cindex'.format(event_name) for event_name in wandb.config.events] +
                     ['{}_std'.format(event_name) for event_name in wandb.config.events]),
         WandbCallback(),
-        EarlyStopping(monitor='val_loss', patience=50), # must be placed last otherwise it won't work
+        EarlyStopping(monitor='val_loss', 
+                        patience=5 if wandb.config.loss == 'AFT' else 50, 
+                        restore_best_weights=True, 
+                        verbose=True), # must be placed last otherwise it won't work
     ]
 
     X_train, y_train, X_valid, y_valid = to_trainable_X(train_set), None, to_trainable_X(valid_set), None
-    trainable_model.fit(X_train, y_train, batch_size=wandb.config.batch_size, epochs=1000, 
+    if wandb.config.loss == 'AFT':
+        trainable_model = train_AFT(trainable_model, X_train, y_train, X_valid, y_valid, callbacks)
+    else:
+        trainable_model.fit(X_train, y_train, batch_size=wandb.config.batch_size, epochs=1000, 
                         validation_data=(X_valid, y_valid),
                         callbacks=callbacks, shuffle=True)
+
     trainable_model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
 
     # load best model from wandb and evaluate
