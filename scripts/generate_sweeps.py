@@ -70,6 +70,12 @@ def set_parameters(d, key, value, search=False):
         'values' if search else 'value': copy.deepcopy(value)
     }
 
+def set_parameters_range(d, key, min, max):
+    d['parameters'][key] = {
+        'min': min,
+        'max': max
+    }
+
 def generate_sweep(task, dataset, hs_ekg_setting, info_setting):
     sweep = copy.deepcopy(base_setting)
     sweep['name'] = '{}/{}/{}/{}'.format(task, dataset, hs_ekg_setting, info_setting)
@@ -108,6 +114,8 @@ def generate_sweep(task, dataset, hs_ekg_setting, info_setting):
         set_parameters(sweep, 'batch_size', 64)
 
         set_parameters(sweep, 'loss', 'AFT')
+        set_parameters(sweep, 'AFT_distribution', 'log-logistic')
+        set_parameters_range(sweep, 'AFT_initial_sigma', 0.3, 1.0)
 
         set_parameters(sweep, 'include_info', info_setting == 'with_info')
         if info_setting == 'with_info':
@@ -122,6 +130,8 @@ def get_all_sweeps():
     datasets = ['audicor_10s', 'big_exam', 'hybrid/audicor_as_test', 'hybrid/both_as_test']
     hs_ekg_settings = ['only_hs', 'only_ekg', 'whole']
     info_settings = ['with_info', 'without_info']
+    survival_models = ['Cox', 'AFT']
+    AFT_distributions = ['weibull', 'log-logistic']
 
     for task in tasks:
         for dataset in datasets:

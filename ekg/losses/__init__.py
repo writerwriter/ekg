@@ -1,3 +1,4 @@
+import numpy as np
 import tensorflow as tf
 import tensorflow.keras.backend as K
 
@@ -51,15 +52,17 @@ class CoxLoss(tf.keras.layers.Layer):
         return K.concatenate(risks, -1)
 
 class AFTLoss(tf.keras.layers.Layer):
-    def __init__(self, n_events, **kwargs):
+    def __init__(self, n_events, distribution, initial_sigma, **kwargs):
         self.n_events = n_events
-        self.log_stds = list()
+        self.distribution = distribution
+        self.initial_sigma = initial_sigma
+        self.log_sigma = list()
         super().__init__(**kwargs)
 
     def build(self, input_shape=None):
         for i in range(self.n_events):
-            self.log_stds.append(self.add_weight(name='log_std_{}'.format(i), shape=(1, ), 
-                                        initializer=tf.keras.initializers.Constant(0), 
+            self.log_sigma.append(self.add_weight(name='log_sigma_{}'.format(i), shape=(1, ), 
+                                        initializer=tf.keras.initializers.Constant(np.log(self.initial_sigma)), 
                                         trainable=True))
         
         super().build(input_shape)
@@ -67,6 +70,8 @@ class AFTLoss(tf.keras.layers.Layer):
     def get_config(self):
         return {
             'n_events': self.n_events,
+            'distribution': self.distribution,
+            'initial_sigma': self.initial_sigma,
         }
 
     def call(self, inputs):
@@ -82,9 +87,16 @@ class AFTLoss(tf.keras.layers.Layer):
             risk = inputs[self.n_events * 2 + i_event]
             risks.append(risk)
 
+            log_sigma = self.log_sigma[i_event]
+            sigma = K.exp(log_sigma)
+
             # log MLE of AFT
-            zi = ( K.log(st) - risk ) / K.exp(self.log_stds[i_event])
-            loss = K.mean( self.log_stds[i_event] * cs - cs * zi + K.exp(zi))
+            zi = ( K.log(st) - risk ) / sigma
+            if self.distribution == 'weibull':
+                loss = K.mean( cs * log_sigma - cs * zi + K.exp(zi))
+            elif self.distribution == 'log-logistic':
+                # https://books.google.com.tw/books?id=bEZpGtw39qgC&pg=PT156&lpg=PT156&dq=MLE+log-logistic+AFT&source=bl&ots=XAxqnYWsrk&sig=ACfU3U3kD1t7YWnG0yyIXbB7aGErxNHFMA&hl=zh-TW&sa=X&ved=2ahUKEwiSs9Xw-fbpAhWHGqYKHT4kBfQQ6AEwAHoECAoQAQ#v=onepage&q=MLE%20log-logistic%20AFT&f=false
+                loss = -K.mean( cs * ( -log_sigma + zi ) - ( cs + 1 ) * K.log(1+K.exp(zi)) ) 
             total_loss += loss
 
         self.add_loss(total_loss)

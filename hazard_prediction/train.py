@@ -87,7 +87,10 @@ def to_trainable_X(dataset):
 
 def get_loss_layer(loss):
     return {
-        'aft': AFTLoss(len(wandb.config.events), name='AFT_loss'),
+        'aft': AFTLoss(len(wandb.config.events), 
+                        wandb.config.AFT_distribution, 
+                        wandb.config.AFT_initial_sigma,
+                        name='AFT_loss'),
         'cox': CoxLoss(len(wandb.config.events), wandb.config.event_weights, name='Cox_loss')
     }[loss.lower()]
 
@@ -130,9 +133,9 @@ def train():
         LogBest(records=['val_loss', 'loss'] + 
                     ['{}_cindex'.format(event_name) for event_name in wandb.config.events] +
                     ['val_{}_cindex'.format(event_name) for event_name in wandb.config.events] +
-                    ['{}_std'.format(event_name) for event_name in wandb.config.events]),
+                    ['{}_sigma'.format(event_name) for event_name in wandb.config.events]),
         WandbCallback(),
-        EarlyStopping(monitor='val_loss', patience=50), # must be placed last otherwise it won't work
+        EarlyStopping(monitor='val_loss', patience=20), # must be placed last otherwise it won't work
     ]
 
     X_train, y_train, X_valid, y_valid = to_trainable_X(train_set), None, to_trainable_X(valid_set), None
@@ -209,6 +212,8 @@ if __name__ == '__main__':
         'radam': False,
 
         'loss': 'AFT', # Cox, AFT
+        'AFT_distribution': 'log-logistic', # weibull, log-logistic
+        'AFT_initial_sigma': 0.5,
 
         'wavelet': True,
         'wavelet_scale_length': 25,
