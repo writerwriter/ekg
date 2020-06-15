@@ -13,22 +13,12 @@ base_setting = {
     },
 
     'parameters':{
-        # 'sincconv_filter_length':{
-        #     'min': 16,
-        #     'max': 128
-        # },
-        # 'sincconv_nfilters':{
-        #     'values': [8, 16, 32]
-        # },
         'branch_nlayers':{
             'values': [1, 2, 3, 4, 5]
         },
         'ekg_kernel_length':{
             'values': [5, 7, 13, 21, 35]
         },
-        # 'hs_kernel_length':{
-        #     'values': [5, 7, 13, 21, 35]
-        # },
         'ekg_nfilters':{
             'values': [1, 2, 4, 8, 16, 32]
         },
