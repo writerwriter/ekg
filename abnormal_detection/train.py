@@ -20,6 +20,7 @@ from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
 from ekg.callbacks import LogBest
 
 from ekg.utils import data_utils
+from ekg.callbacks import GarbageCollector
 from ekg.utils.data_utils import BaseDataGenerator
 from ekg.utils.datasets import BigExamLoader, Audicor10sLoader
 import evaluation
@@ -44,6 +45,11 @@ class AbnormalAudicor10sLoader(Audicor10sLoader):
     def load_normal_y(self):
         return np.zeros((self.normal_X.shape[0], ))
 
+class AbnormalDataGenerator(BaseDataGenerator):
+    @staticmethod
+    def has_empty(datasets, threshold=2):
+        return False
+
 def train():
     dataloaders = list()
     if 'big_exam' in wandb.config.datasets:
@@ -51,9 +57,9 @@ def train():
     if 'audicor_10s' in wandb.config.datasets:
         dataloaders.append(AbnormalAudicor10sLoader(wandb_config=wandb.config))
 
-    g = BaseDataGenerator(dataloaders=dataloaders,
-                            wandb_config=wandb.config,
-                            preprocessing_fn=preprocessing)
+    g = AbnormalDataGenerator(  dataloaders=dataloaders,
+                                wandb_config=wandb.config,
+                                preprocessing_fn=preprocessing)
     train_set, valid_set, test_set = g.get()
     print_statistics(train_set, valid_set, test_set)
 
@@ -68,13 +74,16 @@ def train():
     wandb.log({'model_params': model.count_params()}, commit=False)
 
     callbacks = [
-        EarlyStopping(monitor='val_loss', patience=50),
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         LogBest(),
-        WandbCallback(log_gradients=False, training_data=train_set),
+        WandbCallback(),
+        GarbageCollector(),
+        EarlyStopping(monitor='val_loss', patience=50),
     ]
 
-    model.fit(train_set[0], train_set[1], batch_size=64, epochs=200, validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
+    model.fit(train_set[0], train_set[1], 
+                batch_size=wandb.config.batch_size, epochs=200, 
+                validation_data=(valid_set[0], valid_set[1]), callbacks=callbacks, shuffle=True)
     model.save(os.path.join(wandb.run.dir, 'final_model.h5'))
 
     # load best model from wandb and evaluate
@@ -93,7 +102,7 @@ def train():
     model = load_model(os.path.join(wandb.run.dir, 'model-best.h5'),
                         custom_objects=custom_objects, compile=False)
 
-    evaluation.evaluation(model, test_set)
+    evaluation.evaluation([model], test_set)
 
 if __name__ == '__main__':
     wandb.init(project='ekg-abnormal_detection', entity='toosyou')
@@ -101,13 +110,13 @@ if __name__ == '__main__':
     # search result
     set_wandb_config({
         # model
-        'sincconv_filter_length': 31,
-        'sincconv_nfilters': 8,
+        # 'sincconv_filter_length': 31,
+        # 'sincconv_nfilters': 8,
 
         'branch_nlayers': 1,
 
         'ekg_kernel_length': 35,
-        'hs_kernel_length': 35,
+        # 'hs_kernel_length': 35,
 
         'ekg_nfilters': 1,
         'hs_nfilters': 1,
@@ -115,18 +124,27 @@ if __name__ == '__main__':
         'final_nlayers': 5,
         'final_kernel_length': 21,
         'final_nonlocal_nlayers': 0,
+        'final_nfilters': 8,
 
+        'batch_size': 64,
         'kernel_initializer': 'glorot_uniform',
         'skip_connection': False,
-        'crop_center': False,
+        'crop_center': True,
+        'se_block': True,
+
+        'prediction_head': False,
+        'include_info': False,
 
         'radam': True,
 
+        'wavelet': True,
+        'wavelet_scale_length': 25,
+
         # data
         'remove_dirty': 2, # deprecated, always remove dirty data
-        'datasets': ['audicor_10s'], # 'big_exam', 'audicor_10s'
+        'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
 
-        'big_exam_ekg_channels': [], # [0, 1, 2, 3, 4, 5, 6, 7],
+        'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
         'big_exam_hs_channels': [8, 9],
         'big_exam_only_train': False,
 
@@ -135,6 +153,8 @@ if __name__ == '__main__':
         'audicor_10s_only_train': False,
 
         'downsample': 'direct', # average
+        'with_normal_subjects': True,        # of course
+        'normal_subjects_only_train': False, # of course
 
         'tf': 2.2
 

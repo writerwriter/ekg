@@ -40,10 +40,11 @@ def run_sweep_in_tmux(session_name, sweep_id, n_agents, n_runs):
         cmds.append(cmd)
     return run_cmds_in_tmux(session_name, cmds)
 
-def run_evaluation(task, n_model, sweep_id):
+def run_evaluation(task, sweep_id):
     subprocess.run(['pipenv', 'run', 
                         'python3', './{}/evaluation.py'.format(task), 
-                        '-n', '{}'.format(n_model), '-m', 'best_val_loss', sweep_id], check=True)
+                        '-n', '1', '3', '5', '-lt',
+                        '-m', 'best_val_loss', sweep_id], check=True)
 
 def wait_for_finish(session):
     window = session.select_window('0')
@@ -67,8 +68,7 @@ def run_experiment(wandb_project, sweep_config, session_name, n_agents, n_runs):
     session.kill_session()
 
     task = sweep_config['name'].split('/')[0]
-    for n_model in [1, 3, 5]:
-        run_evaluation(task, n_model, sweep_id)
+    run_evaluation(task, sweep_id)
 
 if __name__ == '__main__':
 

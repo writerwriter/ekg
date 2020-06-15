@@ -11,33 +11,34 @@ from ekg.utils.train_utils import allow_gpu_growth; allow_gpu_growth()
 def evaluation(models, test_set):
     print('Testing set baseline:', 1. - test_set[1][:, 0].sum() / test_set[1][:, 0].shape[0])
 
-    y_pred_vote = np.zeros_like(test_set[1][:, 1])
-    try: # model ensemble
-        for model in models:
-            y_pred = np.argmax(model.predict(test_set[0], batch_size=64), axis=1)
-            y_pred_vote = y_pred_vote + y_pred
+    y_pred_score = np.zeros_like(test_set[1][:, 1], dtype=float)
+    for model in models:
+        y_pred_score += model.predict(test_set[0], batch_size=64)[:, 1]
 
-        y_pred = (y_pred_vote > (len(models) / 2)).astype(int)
-    except:
-        y_pred = np.argmax(models.predict(test_set[0], batch_size=64), axis=1)
+    y_pred = (y_pred_score > (len(models) * 0.5)).astype(int)
 
     y_true = test_set[1][:, 1]
     accuracy = sklearn.metrics.accuracy_score(y_true, y_pred)
-    precision, recall, f1_score, _ = sklearn.metrics.precision_recall_fscore_support(y_true, y_pred, average='micro')
+    precision, recall, f1_score, _ = sklearn.metrics.precision_recall_fscore_support(y_true, y_pred, average='binary', pos_label=1)
+    roc_auc = sklearn.metrics.roc_auc_score(y_true, y_pred_score)
 
     print('Total accuracy:', accuracy)
     print(sklearn.metrics.classification_report(y_true, y_pred))
     print()
     print_cm(sklearn.metrics.confusion_matrix(y_true, y_pred), ['normal', 'patient'])
 
-    return accuracy, precision, recall, f1_score
+    print('ROC AUC:', roc_auc)
+
+    return accuracy, precision, recall, f1_score, roc_auc
 
 def log_evaluation(models, test_set, log_prefix):
-    accuracy, precision, recall, f1_score = evaluation(models, test_set)
+    accuracy, precision, recall, f1_score, roc_auc = evaluation(models, test_set)
+
     wandb.log({'{}_acc'.format(log_prefix): accuracy})
     wandb.log({'{}_precision'.format(log_prefix): precision})
     wandb.log({'{}_recall'.format(log_prefix): recall})
     wandb.log({'{}_f1_score'.format(log_prefix): f1_score})
+    wandb.log({'{}_roc_auc'.format(log_prefix): roc_auc})
 
 def print_statistics(train_set, valid_set, test_set):
     print('Statistics:')
@@ -57,23 +58,19 @@ if __name__ == '__main__':
     from ekg.utils.eval_utils import get_evaluation_args, evaluation_log
 
     from train import AbnormalBigExamLoader, AbnormalAudicor10sLoader
-    from train import preprocessing
+    from train import preprocessing, AbnormalDataGenerator
     from ekg.utils.data_utils import BaseDataGenerator
-
-    wandb.init(project='ekg-abnormal_detection', entity='toosyou')
 
     # get arguments
     args = get_evaluation_args('Abnormal detection evaluation.')
 
     # parse models and configs
     models, wandb_configs, model_paths, sweep_name = parse_wandb_models(args.paths, args.n_model, args.metric)
-
-    evaluation_log(wandb_configs, sweep_name, 
-                    args.paths[0] if args.n_model >= 1 else '',
-                    model_paths)
+    numbers_models = args.n_model if args.n_model is not None else [len(models)]
 
     models[0].summary()
 
+    # get data
     wandb_config = wandb_configs[0]
     dataloaders = list()
     if 'big_exam' in wandb_config.datasets:
@@ -81,18 +78,29 @@ if __name__ == '__main__':
     if 'audicor_10s' in wandb_config.datasets:
         dataloaders.append(AbnormalAudicor10sLoader(wandb_config=wandb_config))
 
-    g = BaseDataGenerator(dataloaders=dataloaders,
+    g = AbnormalDataGenerator(dataloaders=dataloaders,
                             wandb_config=wandb_config,
                             preprocessing_fn=preprocessing)
     train_set, valid_set, test_set = g.get()
-
     print_statistics(train_set, valid_set, test_set)
 
-    print('Training set:')
-    log_evaluation(models, train_set, 'best')
+    for n_model in numbers_models:
+        wandb.init(project='ekg-abnormal_detection', entity='toosyou', reinit=True)
 
-    print('Validation set:')
-    log_evaluation(models, valid_set, 'best_val')
+        evaluation_log(wandb_configs[:n_model], sweep_name, 
+                        args.paths[0] if args.n_model is not None else '',
+                        model_paths[:n_model])
 
-    print('Testing set:')
-    evaluation(models, test_set)
+        model_set = models[:n_model]
+
+        print('Training set:')
+        log_evaluation(model_set, train_set, 'best')
+
+        print('Validation set:')
+        log_evaluation(model_set, valid_set, 'best_val')
+
+        print('Testing set:')
+        if args.log_test:
+            log_evaluation(model_set, test_set, 'best_test')
+        else:
+            evaluation(model_set, test_set)

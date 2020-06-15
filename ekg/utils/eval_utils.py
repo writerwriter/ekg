@@ -222,6 +222,8 @@ def get_evaluation_args(description):
                             help='Number of best models to evaluate.')
     parser.add_argument('-m', '--metric', type=str, default='best_val_loss',
                             help='Which metric to use for selecting best models from the sweep.')
+    parser.add_argument('-lt', '--log_test', action='store_true',
+                            help='Whether to log the results of testing set to wandb.')
     
     args = parser.parse_args()
 

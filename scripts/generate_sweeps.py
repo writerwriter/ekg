@@ -1,4 +1,6 @@
 import copy
+import pprint
+from itertools import product
 
 base_setting = {
     'method': 'bayes',
@@ -13,6 +15,9 @@ base_setting = {
     },
 
     'parameters':{
+        'batch_size': {
+            'value': 64
+        },
         'branch_nlayers':{
             'values': [1, 2, 3, 4, 5]
         },
@@ -32,7 +37,7 @@ base_setting = {
             'values': [5, 7, 13, 21, 35]
         },
         'final_nonlocal_nlayers':{
-            'values': [0]
+            'value': 0
         },
         'final_nfilters':{
             'values': [8, 16, 32]
@@ -50,7 +55,7 @@ base_setting = {
             'values': [True, False]
         },
         'radam':{
-            'values': [False] # True, 
+            'values': [True, False]
         }
     }
 }
@@ -66,9 +71,9 @@ def set_parameters_range(d, key, min, max):
         'max': max
     }
 
-def generate_sweep(task, dataset, hs_ekg_setting, info_setting):
+def generate_sweep(task, dataset, hs_ekg_setting, with_normal=True, survival_model=None, AFT_distribution=None):
     sweep = copy.deepcopy(base_setting)
-    sweep['name'] = '{}/{}/{}/{}'.format(task, dataset, hs_ekg_setting, info_setting)
+    sweep['name'] = '{}/{}/{}/{}'.format(task, dataset, hs_ekg_setting, 'with_normal' if with_normal else 'without_normal')
     sweep['program'] = './{}/train.py'.format(task)
 
     set_parameters(sweep, 'datasets', [dataset] if 'hybrid' not in dataset else ['audicor_10s', 'big_exam'])
@@ -87,8 +92,15 @@ def generate_sweep(task, dataset, hs_ekg_setting, info_setting):
     set_parameters(sweep, 'big_exam_hs_channels', list() if hs_ekg_setting == 'only_ekg' else [8, 9])
     set_parameters(sweep, 'big_exam_only_train', (dataset == 'hybrid/audicor_as_test'))
 
+    set_parameters(sweep, 'with_normal_subjects', with_normal)
+    set_parameters(sweep, 'normal_subjects_only_train', False)
+
     # hazard_prediction
     if task == 'hazard_prediction':
+        sweep['parameters']['radam'] = {
+            'value': [False]
+        }
+
         # model
         set_parameters(sweep, 'prediction_head', [True, False], search=True)
         set_parameters(sweep, 'prediction_nlayers', [2, 3, 4, 5], search=True)
@@ -100,15 +112,14 @@ def generate_sweep(task, dataset, hs_ekg_setting, info_setting):
         set_parameters(sweep, 'events', events)
         set_parameters(sweep, 'event_weights', [1 for _ in events])
         set_parameters(sweep, 'censoring_limit', 400 if dataset == 'hybrid/audicor_as_test' else 99999)
-        # set_parameters(sweep, 'censoring_limit', 400)
-        set_parameters(sweep, 'batch_size', 64)
 
-        set_parameters(sweep, 'loss', 'AFT')
-        set_parameters(sweep, 'AFT_distribution', 'log-logistic')
-        set_parameters_range(sweep, 'AFT_initial_sigma', 0.3, 1.0)
+        set_parameters(sweep, 'loss', survival_model) # AFT or Cox
+        if survival_model == 'AFT':
+            set_parameters(sweep, 'AFT_distribution', AFT_distribution)
+            set_parameters_range(sweep, 'AFT_initial_sigma', 0.3, 1.0)
 
-        set_parameters(sweep, 'include_info', info_setting == 'with_info')
-        if info_setting == 'with_info':
+        set_parameters(sweep, 'include_info', not with_normal) # without normal -> include info
+        if not with_normal:
             set_parameters(sweep, 'info_nlayers', [1, 2, 3, 4, 5], search=True)
             set_parameters(sweep, 'info_units', [8, 16, 32, 64], search=True)
     
@@ -119,14 +130,27 @@ def get_all_sweeps():
     tasks = ['abnormal_detection', 'hazard_prediction']
     datasets = ['audicor_10s', 'big_exam', 'hybrid/audicor_as_test', 'hybrid/both_as_test']
     hs_ekg_settings = ['only_hs', 'only_ekg', 'whole']
-    info_settings = ['with_info', 'without_info']
+
+    # hazard prediction only
+    normal_settings = ['with_normal', 'without_normal']
     survival_models = ['Cox', 'AFT']
+
+    # AFT only
     AFT_distributions = ['weibull', 'log-logistic']
 
-    for task in tasks:
-        for dataset in datasets:
-            for hs_ekg_setting in hs_ekg_settings:
-                for info_setting in info_settings:
-                    sweep = generate_sweep(task, dataset, hs_ekg_setting, info_setting)
-                    sweeps.append(sweep)
+    # abnormal detection
+    for task, dataset, hs_ekg_setting in product(tasks[:1], datasets, hs_ekg_settings):
+        sweeps.append(generate_sweep(task, dataset, hs_ekg_setting))
+
+    # hazard prediction
+    for task, dataset, hs_ekg_setting, normal_setting, survival_model in product(tasks[1:], datasets, hs_ekg_settings, normal_settings, survival_models):
+        if survival_model == 'AFT':
+            for distribution in AFT_distributions:
+                sweeps.append(generate_sweep(task, dataset, hs_ekg_setting, (normal_setting == 'with_normal'), survival_model, distribution))
+        else:
+            sweeps.append(generate_sweep(task, dataset, hs_ekg_setting, (normal_setting == 'with_normal'), survival_model))
+
     return sweeps
+
+if __name__ == '__main__':
+    pprint.pprint(get_all_sweeps())

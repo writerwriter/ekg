@@ -118,8 +118,7 @@ if __name__ == '__main__':
     if 'audicor_10s' in wandb_config.datasets:
         dataloaders.append(HazardAudicor10sLoader(wandb_config=wandb_config))
 
-    g = HazardDataGenerator(do_wavelet=wandb_config.wavelet,
-                            dataloaders=dataloaders,
+    g = HazardDataGenerator(dataloaders=dataloaders,
                             wandb_config=wandb_config,
                             preprocessing_fn=preprocessing)
 
@@ -148,7 +147,10 @@ if __name__ == '__main__':
         log_evaluation(model_set, valid_set, 'best_val', wandb_config.events, reverse)
 
         print('Testing set:')
-        evaluation(model_set, test_set, wandb_config.events, reverse)
+        if args.log_test:
+            log_evaluation(model_set, test_set, 'best_test', wandb_config.events, reverse)
+        else:
+            evaluation(model_set, test_set, wandb_config.events, reverse)
 
         evaluation_plot(model_set, train_set, train_set, 'training - ', reverse, scatter_exp, scatter_xlabel)
         evaluation_plot(model_set, train_set, valid_set, 'validation - ', reverse, scatter_exp, scatter_xlabel)

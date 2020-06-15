@@ -86,13 +86,13 @@
         | PureBigExam | 0.49 * B       | 0.21 * B        | 0.3 * B       |
         | Hybrid      | 0.49 * (B + A) | 0.21 * (B + A)  | 0.3 * (B + A) |
 
-* Abnormal detection - PureBigExam
+* Abnormal detection - Hybrid
     * Best Model / 3-Model Ensemble / 5-Model Ensemble
-        |  EKG  |  HS   | Accuracy | F1  | AUC | Sweep ID |
-        | :---: | :---: | -------- | --- | --- | -------- |
-        |   V   |       |          |     |     |          |
-        |       |   V   |          |     |     |          |
-        |   V   |   V   |          |     |     |          |
+        |  EKG  |  HS   | Accuracy | F1  | ROC AUC | Sweep ID |
+        | :---: | :---: | -------- | --- | ------- | -------- |
+        |   V   |       |          |     |         |          |
+        |       |   V   |          |     |         |          |
+        |   V   |   V   |          |     |         |          |
 
 * Hazard prediction - PureBigExam - Concordance Index: ADHF / Mortality / MI / CVDeath
     * With normal subjects in both training and testing sets

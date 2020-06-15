@@ -77,3 +77,7 @@ class LossVariableChecker(keras.callbacks.Callback):
 
                 print('{} sigma: {:.4f}'.format(event, sigma))
                 logs['{}_sigma'.format(event)] = sigma
+
+class GarbageCollector(keras.callbacks.Callback):
+    def on_epoch_end(self, epoch, logs={}):
+        gc.collect() # try to fix memory leak

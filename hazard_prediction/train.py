@@ -59,27 +59,6 @@ def get_trainable_model(prediction_model, loss_layer):
     else:
         return Model([prediction_model.input, cs_input, st_input], output)
 
-class HazardDataGenerator(BaseDataGenerator):
-    def __init__(self, do_wavelet, **kwargs):
-        self.do_wavelet = do_wavelet
-        super().__init__(**kwargs)
-
-    def get(self):
-        train_set, valid_set, test_set = super().get()
-
-        if self.do_wavelet:
-            for X in [train_set[0], valid_set[0], test_set[0]]:
-                if self.config.n_ekg_channels != 0:
-                    X['ekg_input'] = X['ekg_hs_input'][..., :self.config.n_ekg_channels]
-                if self.config.n_hs_channels != 0:
-                    hs = X['ekg_hs_input'][..., -self.config.n_hs_channels:] # (?, n_samples, n_channels)
-                    X['hs_input'] = data_utils.mp_generate_wavelet(hs, 
-                                                                    self.config.sampling_rate, 
-                                                                    self.config.wavelet_scale_length,
-                                                                    'Generate Wavelets')
-                X.pop('ekg_hs_input')
-        return train_set, valid_set, test_set
-
 def to_trainable_X(dataset):
     X, y = dataset[0].copy(), dataset[1]
     X['cs_input'], X['st_input'] = y[..., 0], y[..., 1]
@@ -94,6 +73,16 @@ def get_loss_layer(loss):
         'cox': CoxLoss(len(wandb.config.events), wandb.config.event_weights, name='Cox_loss')
     }[loss.lower()]
 
+class HazardDataGenerator(BaseDataGenerator):
+    @staticmethod
+    def has_empty(datasets, threshold=2):
+        for dataset in datasets:
+            y = dataset[1]
+            for i in range(y.shape[1]):
+                if (y[:, i, 0] == 1).sum() <= threshold: # number of signals with events
+                    return True
+        return False
+
 def train():
     dataloaders = list()
     if 'big_exam' in wandb.config.datasets:
@@ -101,8 +90,7 @@ def train():
     if 'audicor_10s' in wandb.config.datasets:
         dataloaders.append(HazardAudicor10sLoader(wandb_config=wandb.config))
 
-    g = HazardDataGenerator(do_wavelet=wandb.config.wavelet,
-                            dataloaders=dataloaders,
+    g = HazardDataGenerator(  dataloaders=dataloaders,
                             wandb_config=wandb.config,
                             preprocessing_fn=preprocessing)
 
@@ -202,7 +190,7 @@ if __name__ == '__main__':
 
         'prediction_head': False,
         
-        'include_info': True, # only works with audicor_10s
+        'include_info': True,
         'infos': ['sex', 'age'], # , 'height', 'weight', 'BMI'],
         'info_apply_noise': True,
         'info_noise_stds': [0, 1], # , 1, 1, 0.25 # stds of gaussian noise

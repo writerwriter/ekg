@@ -104,6 +104,10 @@ class BaseDataGenerator:
             return [normalized_ekg_hs, normalized_info], [ekg_hs_means_and_stds, info_means_and_stds]
         return norm(X, means_and_stds)
 
+    @staticmethod
+    def has_empty(datasets, threshold=2):
+        return NotImplementedError('has_empty not implemented.')
+
     def get_split(self, rs=42):
         '''Split the data into training set, validation set, and testing set.
 
@@ -119,14 +123,6 @@ class BaseDataGenerator:
                 rtn[1] = np.append(set1[1], set2[1], axis=0)
                 return rtn
             return [np.append(set1[i], set2[i], axis=0) for i in range(2)]
-
-        def has_empty(datasets, threshold=2):
-            for dataset in datasets:
-                y = dataset[1]
-                for i in range(y.shape[1]):
-                    if (y[:, i, 0] == 1).sum() <= threshold: # # of signals with events
-                        return True
-            return False
 
         def split(rs):
             train_set, valid_set, test_set = None, None, None
@@ -144,7 +140,7 @@ class BaseDataGenerator:
 
         while True:
             datasets = split(rs)
-            if has_empty(datasets):
+            if self.has_empty(datasets):
                 rs += 1
                 continue
 
@@ -180,6 +176,17 @@ class BaseDataGenerator:
         valid_set[0]    = multi_input_format(valid_set[0], self.config.include_info)
         test_set[0]     = multi_input_format(test_set[0], self.config.include_info)
 
+        if self.config.wavelet:
+            for X in [train_set[0], valid_set[0], test_set[0]]:
+                if self.config.n_ekg_channels != 0:
+                    X['ekg_input'] = X['ekg_hs_input'][..., :self.config.n_ekg_channels]
+                if self.config.n_hs_channels != 0:
+                    hs = X['ekg_hs_input'][..., -self.config.n_hs_channels:] # (?, n_samples, n_channels)
+                    X['hs_input'] = mp_generate_wavelet(hs, 
+                                                        self.config.sampling_rate, 
+                                                        self.config.wavelet_scale_length,
+                                                        'Generate Wavelets')
+                X.pop('ekg_hs_input')
         return train_set, valid_set, test_set
 
 def to_spectrogram(data):
