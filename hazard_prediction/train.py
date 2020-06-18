@@ -73,6 +73,14 @@ def get_loss_layer(loss):
         'cox': CoxLoss(len(wandb.config.events), wandb.config.event_weights, name='Cox_loss')
     }[loss.lower()]
 
+def dataset_shuffle(dataset):
+    _, value = list(dataset.items())[0]
+    shuffle_indices = np.arange(value.shape[0])
+    np.random.shuffle(shuffle_indices)
+    
+    for key in dataset:
+        dataset[key] = dataset[key][shuffle_indices]
+
 class HazardDataGenerator(BaseDataGenerator):
     @staticmethod
     def has_empty(datasets, threshold=2):
@@ -123,10 +131,13 @@ def train():
                     ['val_{}_cindex'.format(event_name) for event_name in wandb.config.events] +
                     ['{}_sigma'.format(event_name) for event_name in wandb.config.events]),
         WandbCallback(),
-        EarlyStopping(monitor='val_loss', patience=20), # must be placed last otherwise it won't work
+        EarlyStopping(monitor='val_loss', patience=50), # must be placed last otherwise it won't work
     ]
 
     X_train, y_train, X_valid, y_valid = to_trainable_X(train_set), None, to_trainable_X(valid_set), None
+    dataset_shuffle(X_train)
+    dataset_shuffle(X_valid)
+    
     trainable_model.fit(X_train, y_train, batch_size=wandb.config.batch_size, epochs=1000, 
                         validation_data=(X_valid, y_valid),
                         callbacks=callbacks, shuffle=True)
@@ -162,19 +173,19 @@ if __name__ == '__main__':
 
     # search result
     set_wandb_config({
-        'sincconv_filter_length': 63,
+        'sincconv_filter_length': 26,
         'sincconv_nfilters': 8,
 
-        'branch_nlayers': 3,
+        'branch_nlayers': 1,
 
-        'ekg_kernel_length': 21,
-        'hs_kernel_length': 35,
+        'ekg_kernel_length': 35,
+        'hs_kernel_length': 21,
 
-        'ekg_nfilters': 1,
-        'hs_nfilters': 2,
+        'ekg_nfilters': 8,
+        'hs_nfilters': 8,
 
-        'final_nlayers': 4,
-        'final_kernel_length': 21,
+        'final_nlayers': 3,
+        'final_kernel_length': 5,
         'final_nonlocal_nlayers': 0,
         'final_nfilters': 8,
 
@@ -186,37 +197,37 @@ if __name__ == '__main__':
         'kernel_initializer': 'glorot_uniform',
         'skip_connection': False,
         'crop_center': True,
-        'se_block': True,
+        'se_block': False,
 
         'prediction_head': False,
         
-        'include_info': True,
+        'include_info': False,
         'infos': ['sex', 'age'], # , 'height', 'weight', 'BMI'],
         'info_apply_noise': True,
         'info_noise_stds': [0, 1], # , 1, 1, 0.25 # stds of gaussian noise
         'info_nlayers': 5,
         'info_units': 64,
 
-        'radam': False,
+        'radam': True,
 
-        'loss': 'AFT', # Cox, AFT
+        'loss': 'Cox', # Cox, AFT
         'AFT_distribution': 'log-logistic', # weibull, log-logistic
         'AFT_initial_sigma': 0.5,
 
-        'wavelet': True,
+        'wavelet': False,
         'wavelet_scale_length': 25,
 
         # data
-        'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD', 'Mortality'
-        'event_weights': [1, 1],
+        'events': ['ADHF', 'Mortality', 'MI', 'CVD'], # 'MI', 'Stroke', 'CVD', 'Mortality'
+        'event_weights': [1, 1, 1, 1],
         'censoring_limit': 99999, # 99999 if no limit specified
 
         'output_l1_regularizer': 0, # 0 if disable
         'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
 
-        'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
+        'datasets': ['big_exam'], # 'big_exam', 'audicor_10s'
 
-        'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
+        'big_exam_ekg_channels': [], # [0, 1, 2, 3, 4, 5, 6, 7],
         'big_exam_hs_channels': [8, 9],
         'big_exam_only_train': False,
 
@@ -226,8 +237,8 @@ if __name__ == '__main__':
         'audicor_10s_ignore_888': True,
 
         'downsample': 'direct', # average
-        'with_normal_subjects': False,
-        'normal_subjects_only_train': True,
+        'with_normal_subjects': True,
+        'normal_subjects_only_train': False,
 
         'tf': '2.2',
         'remove_dirty': 2, # deprecated, always remove dirty data

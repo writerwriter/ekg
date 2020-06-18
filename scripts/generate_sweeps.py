@@ -15,6 +15,13 @@ base_setting = {
     },
 
     'parameters':{
+        'sincconv_filter_length':{
+            'min': 16,
+            'max': 128
+        },
+        'sincconv_nfilters':{
+            'values': [8, 16, 32]
+        },
         'batch_size': {
             'value': 64
         },
@@ -22,6 +29,9 @@ base_setting = {
             'values': [1, 2, 3, 4, 5]
         },
         'ekg_kernel_length':{
+            'values': [5, 7, 13, 21, 35]
+        },
+        'hs_kernel_length':{
             'values': [5, 7, 13, 21, 35]
         },
         'ekg_nfilters':{
@@ -97,9 +107,6 @@ def generate_sweep(task, dataset, hs_ekg_setting, with_normal=True, survival_mod
 
     # hazard_prediction
     if task == 'hazard_prediction':
-        sweep['parameters']['radam'] = {
-            'value': [False]
-        }
 
         # model
         set_parameters(sweep, 'prediction_head', [True, False], search=True)
@@ -113,8 +120,13 @@ def generate_sweep(task, dataset, hs_ekg_setting, with_normal=True, survival_mod
         set_parameters(sweep, 'event_weights', [1 for _ in events])
         set_parameters(sweep, 'censoring_limit', 400 if dataset == 'hybrid/audicor_as_test' else 99999)
 
+        sweep['name'] = '{}/{}'.format(sweep['name'], survival_model)
         set_parameters(sweep, 'loss', survival_model) # AFT or Cox
         if survival_model == 'AFT':
+            sweep['parameters']['radam'] = {
+                'value': False
+            }
+            sweep['name'] = '{}/{}'.format(sweep['name'], AFT_distribution)
             set_parameters(sweep, 'AFT_distribution', AFT_distribution)
             set_parameters_range(sweep, 'AFT_initial_sigma', 0.3, 1.0)
 

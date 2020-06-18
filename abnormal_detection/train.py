@@ -110,13 +110,13 @@ if __name__ == '__main__':
     # search result
     set_wandb_config({
         # model
-        # 'sincconv_filter_length': 31,
-        # 'sincconv_nfilters': 8,
+        'sincconv_filter_length': 31,
+        'sincconv_nfilters': 8,
 
         'branch_nlayers': 1,
 
         'ekg_kernel_length': 35,
-        # 'hs_kernel_length': 35,
+        'hs_kernel_length': 35,
 
         'ekg_nfilters': 1,
         'hs_nfilters': 1,
@@ -137,7 +137,7 @@ if __name__ == '__main__':
 
         'radam': True,
 
-        'wavelet': True,
+        'wavelet': False,
         'wavelet_scale_length': 25,
 
         # data

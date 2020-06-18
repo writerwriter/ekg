@@ -45,7 +45,7 @@ class CoxLoss(tf.keras.layers.Layer):
             risk = inputs[self.n_events * 2 + i_event]
             risks.append(risk)
 
-            total_loss += self.negative_hazard_log_likelihood(cs, st, risk) * self.event_weights[i_event]
+            total_loss += self.negative_hazard_log_likelihood(cs, st, risk) * self.event_weights[i_event] / self.n_events
 
         self.add_loss(total_loss)
         # only output risks
