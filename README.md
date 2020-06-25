@@ -94,19 +94,19 @@
         |       |   V   | 0.9265 / 0.9307 / 0.9298 | 0.9062 / 0.8986 / 0.8985 | 0.9805 / 0.9986 / 0.9972 | 0.9419 / 0.946 / 0.9453  | 0.9805 / 0.9986 / 0.9972 | `ih8g4x1v` |
         |   V   |   V   | 0.9696 / 0.9704 / 0.9738 | 0.983  / 0.9724 / 0.9738 | 0.9666 / 0.9791 / 0.9833 | 0.9748 / 0.9757 / 0.9785 | 0.9666 / 0.9791 / 0.9833 | `e7dyx0xq` |
 
-* Hazard prediction - PureBigExam - Concordance Index: ADHF / Mortality / MI / CVDeath / Weighted
+* Hazard prediction - PureBigExam - Weighted Concordance Index of ADHF / Mortality / MI / CVDeath
     * With normal subjects in both training and testing sets
-        |  EKG  |  HS   | Survival Model   | Best Model | 3-Model Ensemble | 5-Model Ensemble | Sweep ID | Note |
-        | :---: | :---: | :--------------- | ---------- | ---------------- | ---------------- | -------- | ---- |
-        |   V   |       | Cox              |            |                  |                  |          |      |
-        |   V   |       | Weibull AFT      |            |                  |                  |          |      |
-        |   V   |       | Log-logistic AFT |            |                  |                  |          |      |
-        |       |   V   | Cox              |            |                  |                  |          |      |
-        |       |   V   | Weibull AFT      |            |                  |                  |          |      |
-        |       |   V   | Log-logistic AFT |            |                  |                  |          |      |
-        |   V   |   V   | Cox              |            |                  |                  |          |      |
-        |   V   |   V   | Weibull AFT      |            |                  |                  |          |      |
-        |   V   |   V   | Log-logistic AFT |            |                  |                  |          |      |
+        |  EKG  |  HS   | Survival Model   | Best Model | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note |
+        | :---: | :---: | :--------------- | :--------: | :--------------: | :--------------: | ---------- | ---- |
+        |   V   |       | Cox              |   0.7063   |      0.7597      |      0.7716      | `n16jsktd` |      |
+        |   V   |       | Weibull AFT      |   0.7728   |      0.7661      |      0.7729      | `ddtiuvw6` |      |
+        |   V   |       | Log-logistic AFT |   0.7522   |      0.7730      |      0.7833      | `pr4gp97a` |      |
+        |       |   V   | Cox              |   0.7010   |      0.7047      |      0.7377      | `d3aitvdx` |      |
+        |       |   V   | Weibull AFT      |   0.7299   |      0.7455      |      0.7453      | `gkcpwxkj` |      |
+        |       |   V   | Log-logistic AFT |   0.6942   |      0.7374      |      0.7419      | `50ioyk9h` |      |
+        |   V   |   V   | Cox              |   0.7829   |      0.7848      |      0.7925      | `jkjs2l3l` |      |
+        |   V   |   V   | Weibull AFT      |   0.7265   |      0.7371      |      0.7833      | `w98wwvtq` |      |
+        |   V   |   V   | Log-logistic AFT |   0.7771   |      0.7709      |      0.7716      | `1xhq57sl` |      |
 
     * Without normal subjects
         |  EKG  |  HS   | Survival Model   | Best Model | 3-Model Ensemble | 5-Model Ensemble | Sweep ID | Note |
@@ -122,19 +122,19 @@
         |   V   |   V   | Log-logistic AFT |            |                  |                  |          |      |
 
 
-* Hazard prediction - Hybrid - Concordance Index: ADHF / Mortality
+* Hazard prediction - Hybrid - Weighted Concordance Index of ADHF / Mortality
     * With normal subjects in both training and testing sets
-        |  EKG  |  HS   | Survival Model   | Best Model      | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note |
-        | :---: | :---: | :--------------- | --------------- | ---------------- | ---------------- | ---------- | ---- |
-        |   V   |       | Cox              | 0.7365 / 0.6743 | 0.7039 / 0.6459  | 0.7074 / 0.6473  | `v3lhpi8b` |      |
-        |   V   |       | Weibull AFT      |                 |                  |                  |            |      |
-        |   V   |       | Log-logistic AFT |                 |                  |                  |            |      |
-        |       |   V   | Cox              | 0.7299 / 0.7647 | 0.7336 / 0.7865  | 0.7326 / 0.7925  | `4xtp5skh` |      |
-        |       |   V   | Weibull AFT      |                 |                  |                  |            |      |
-        |       |   V   | Log-logistic AFT |                 |                  |                  |            |      |
-        |   V   |   V   | Cox              | 0.7204 / 0.7409 | 0.7172 / 0.7384  | 0.7209 / 0.7445  | `9kguu504` |      |
-        |   V   |   V   | Weibull AFT      |                 |                  |                  |            |      |
-        |   V   |   V   | Log-logistic AFT |                 |                  |                  |            |      |
+        |  EKG  |  HS   | Survival Model   | Best Model | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note |
+        | :---: | :---: | :--------------- | :--------: | :--------------: | :--------------: | ---------- | ---- |
+        |   V   |       | Cox              |   0.6770   |      0.6988      |      0.6857      | `uunm1m1t` |      |
+        |   V   |       | Weibull AFT      |   0.6274   |      0.6813      |      0.6919      | `j6bb43dc` |      |
+        |   V   |       | Log-logistic AFT |   0.7114   |      0.7072      |      0.7050      | `vmagsbod` |      |
+        |       |   V   | Cox              |   0.7545   |      0.7654      |      0.7696      | `9zimatkj` |      |
+        |       |   V   | Weibull AFT      |   0.7422   |      0.7575      |      0.7717      | `x4kxis1t` |      |
+        |       |   V   | Log-logistic AFT |   0.7560   |      0.7600      |      0.7718      | `chuzr55g` |      |
+        |   V   |   V   | Cox              |   0.7607   |      0.7605      |      0.7668      | `y8nbsgof` |      |
+        |   V   |   V   | Weibull AFT      |   0.7020   |      0.6912      |      0.7064      | `qj9l0u63` |      |
+        |   V   |   V   | Log-logistic AFT |   0.7873   |      0.7777      |      0.7896      | `3g9aqusu` |      |
         
     * Without normal subjects
         |  EKG  |  HS   | Survival Model   | Best Model      | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note |

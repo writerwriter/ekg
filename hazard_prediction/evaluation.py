@@ -32,6 +32,7 @@ def evaluation(models, test_set, event_names, reverse=True):
         y_pred = models.predict(X, batch_size=64)
 
     cindices = list()
+    number_events = list()
 
     if reverse: y_pred = y_pred * -1
 
@@ -41,14 +42,23 @@ def evaluation(models, test_set, event_names, reverse=True):
         cindex = concordance_index(event_st, y_pred[:, i], event_cs) # cindex of the event
         print('Concordance index of {} : {:.4f}'.format(event_names[i], cindex))
         cindices.append(cindex)
+        number_events.append((event_cs == 1).sum())
 
-    return np.array(cindices)
+    cindices = np.array(cindices)
+    number_events = np.array(number_events)
+
+    weighted_cindex = (cindices * number_events / number_events.sum()).sum()
+    print('Weighted concordance index: {:.4f}'.format(weighted_cindex))
+
+    return cindices, weighted_cindex
 
 def log_evaluation(models, test_set, log_prefix, event_names, reverse=True):
-    cindices = evaluation(models, test_set, event_names, reverse)
+    cindices, weighted_cindex = evaluation(models, test_set, event_names, reverse)
     for cindex, event_name in zip(cindices, event_names):
         log_name = '{}_{}_cindex'.format(log_prefix, event_name)
         wandb.log({log_name: cindex})
+
+    wandb.log({'{}_weighted_cindex'.format(log_prefix): weighted_cindex})
 
 def evaluation_plot(models, train_set, run_set, prefix='', reverse=True, scatter_exp=False, scatter_xlabel='predicted risk'):
     # upload plots
