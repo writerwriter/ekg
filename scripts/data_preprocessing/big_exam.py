@@ -22,7 +22,7 @@ config.read('./config.cfg')
 
 ABNORMAL_DIRS = config['Big_Exam']['abnormal_dirs'].split(', ')
 NORMAL_DIRS = config['Big_Exam']['normal_dirs'].split(', ')
-LABEL_FILENAME = config['Big_Exam']['label_filename']
+LABEL_FILENAMES = config['Big_Exam']['label_filenames'].split(', ')
 DIRTYDATA_FILENAME = config['Big_Exam']['dirtydata_filename']
 
 OUTPUT_DIR = config['Big_Exam']['output_dir']
@@ -91,11 +91,35 @@ def generate_survival_data(event_names=None):
 
         return df
 
+    def find_datestring(s):
+        search = re.search('[0-9]+', str(s))
+        if search: return search.group(0)
+        return ''
+
+    def bmi_get_info(row):
+        filename = row.filename.split('/')[-1]
+        match = BMI_df[BMI_df['EcgFilename'].str.lower() == filename.lower()]
+        
+        if match.shape[0] == 0: # match date
+            date_string = find_datestring(row.filename.split('/')[2])
+            match = BMI_df[ (BMI_df['date_string'] == date_string) & (BMI_df['code'] == row.subject_id)]
+            
+            if match.shape[0] == 0:
+                return np.nan, np.nan, np.nan, np.nan, np.nan
+            
+        BMI_row = match.iloc[0]
+        return pd.Series(BMI_row[['Age', 'height ', 'weight', 'SBPb', 'DBPb']])
+
     if event_names is None:
         event_names = ['ADHF', 'MI', 'Stroke', 'CVD', 'Mortality']
 
     # load the label files and fix the nan issue
-    ahf2017_df = pd.read_excel(LABEL_FILENAME, skiprows=1).replace('#NULL!', np.nan)
+    ahf2017_df = pd.read_excel(LABEL_FILENAMES[0], skiprows=1).replace('#NULL!', np.nan)
+
+    # load the dataframe with height, weight, sex, age, SBPb, DBPb
+    BMI_df = pd.read_excel(LABEL_FILENAMES[1], sheet_name=1)
+    BMI_df['date_string'] = BMI_df['File name'].apply(find_datestring)
+    BMI_df['code'] = BMI_df['code'].str.strip()
 
     abnormal_filenames = get_all_filenames(ABNORMAL_DIRS)
 
@@ -145,9 +169,11 @@ def generate_survival_data(event_names=None):
     # remove duration data
     output_df = output_df.drop(columns=['follow_dur'] + [en + '_dur' for en in event_names])
 
-    # append info(sex and age)
-    output_df = output_df.merge(right=ahf2017_df[['code', 'sex', 'age']], left_on='subject_id', right_on='code', how='left').drop(columns='code')
+    # append info
+    output_df = output_df.merge(right=ahf2017_df[['code', 'sex']], left_on='subject_id', right_on='code', how='left').drop(columns='code') # sex
     output_df.loc[output_df.sex.isnull(), 'sex'] = output_df.sex.mode()[0] # replace missing sex with the most frequent value (mode)
+    output_df[['age', 'height', 'weight', 'sbp', 'dbp']] = output_df.apply(bmi_get_info, axis=1)
+    output_df['BMI'] = output_df.weight / (output_df.height**2 * 0.0001)
 
     return output_df
 

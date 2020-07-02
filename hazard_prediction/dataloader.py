@@ -37,6 +37,7 @@ def preprocessing(dataloader):
 class HazardBigExamLoader(BigExamLoader):
     def load_abnormal_info(self):
         df = pd.read_csv(os.path.join(self.datadir, 'abnormal_event.csv'))
+        df = df.replace(np.nan, -1) # replace nan with -1, so preprocessing can ignore them
         return np.tile(df[self.config.infos].values, [len(self.channel_set), 1])
 
     def load_abnormal_y(self):

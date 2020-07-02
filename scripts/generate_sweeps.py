@@ -131,7 +131,8 @@ def generate_sweep(task, dataset, hs_ekg_setting, with_normal=True, survival_mod
             set_parameters_range(sweep, 'AFT_initial_sigma', 0.3, 1.0)
 
         set_parameters(sweep, 'include_info', not with_normal) # without normal -> include info
-        if not with_normal:
+        if not with_normal: # include info
+            set_parameters(sweep, 'infos', ['sex', 'age', 'height', 'weight', 'BMI'])
             set_parameters(sweep, 'info_nlayers', [1, 2, 3, 4, 5], search=True)
             set_parameters(sweep, 'info_units', [8, 16, 32, 64], search=True)
     

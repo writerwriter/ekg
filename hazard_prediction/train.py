@@ -201,16 +201,16 @@ if __name__ == '__main__':
 
         'prediction_head': False,
         
-        'include_info': False,
-        'infos': ['sex', 'age'], # , 'height', 'weight', 'BMI'],
+        'include_info': True,
+        'infos': ['sex', 'age', 'height', 'weight', 'BMI'],
         'info_apply_noise': True,
-        'info_noise_stds': [0, 1], # , 1, 1, 0.25 # stds of gaussian noise
+        'info_noise_stds': [0, 1, 1, 1, 0.25], # , 1, 1, 0.25 # stds of gaussian noise
         'info_nlayers': 5,
         'info_units': 64,
 
-        'radam': True,
+        'radam': False,
 
-        'loss': 'Cox', # Cox, AFT
+        'loss': 'AFT', # Cox, AFT
         'AFT_distribution': 'log-logistic', # weibull, log-logistic
         'AFT_initial_sigma': 0.5,
 
@@ -218,16 +218,16 @@ if __name__ == '__main__':
         'wavelet_scale_length': 25,
 
         # data
-        'events': ['ADHF', 'Mortality', 'MI', 'CVD'], # 'MI', 'Stroke', 'CVD', 'Mortality'
+        'events': ['ADHF', 'Mortality'], # 'MI', 'Stroke', 'CVD', 'Mortality'
         'event_weights': [1, 1, 1, 1],
         'censoring_limit': 99999, # 99999 if no limit specified
 
         'output_l1_regularizer': 0, # 0 if disable
         'output_l2_regularizer': 0, # 0 if disable # 0.01 - 0.1
 
-        'datasets': ['big_exam'], # 'big_exam', 'audicor_10s'
+        'datasets': ['big_exam', 'audicor_10s'], # 'big_exam', 'audicor_10s'
 
-        'big_exam_ekg_channels': [], # [0, 1, 2, 3, 4, 5, 6, 7],
+        'big_exam_ekg_channels': [1], # [0, 1, 2, 3, 4, 5, 6, 7],
         'big_exam_hs_channels': [8, 9],
         'big_exam_only_train': False,
 
@@ -237,7 +237,7 @@ if __name__ == '__main__':
         'audicor_10s_ignore_888': True,
 
         'downsample': 'direct', # average
-        'with_normal_subjects': True,
+        'with_normal_subjects': False,
         'normal_subjects_only_train': False,
 
         'tf': '2.2',
