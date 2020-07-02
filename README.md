@@ -147,4 +147,4 @@
         |       |   V   | Log-logistic AFT |            |                  |                  |            |          |
         |   V   |   V   | Cox              |   0.6069   |      0.6131      |      0.6200      | `ldui46cc` | sex, age |
         |   V   |   V   | Weibull AFT      |   0.6178   |      0.6356      |      0.6354      | `d345t3sz` | sex, age |
-        |   V   |   V   | Log-logistic AFT |   0.6342   |      0.6382      |      0.6340      | `g1aqnc4r` | sex, age |
+        |   V   |   V   | Log-logistic AFT |   0.6342   |      0.6382      |      0.6341      | `g1aqnc4r` | sex, age |
