@@ -132,7 +132,10 @@ def generate_sweep(task, dataset, hs_ekg_setting, with_normal=True, survival_mod
 
         set_parameters(sweep, 'include_info', not with_normal) # without normal -> include info
         if not with_normal: # include info
-            set_parameters(sweep, 'infos', ['sex', 'age', 'height', 'weight', 'BMI'])
+            set_parameters(sweep, 'infos', ['sex', 'age', 'BMI']) # , 'height', 'weight'
+            set_parameters(sweep, 'info_noise_stds', [0, 1, 0.5]) # [0, 1, 1, 1, 0.25]
+            set_parameters(sweep, 'info_apply_noise', True)
+
             set_parameters(sweep, 'info_nlayers', [1, 2, 3, 4, 5], search=True)
             set_parameters(sweep, 'info_units', [8, 16, 32, 64], search=True)
     

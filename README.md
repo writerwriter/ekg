@@ -109,17 +109,17 @@
         |   V   |   V   | Log-logistic AFT |   0.7771   |      0.7709      |      0.7716      | `1xhq57sl` |      |
 
     * Without normal subjects
-        |  EKG  |  HS   | Survival Model   | Best Model | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note |
-        | :---: | :---: | :--------------- | :--------: | :--------------: | :--------------: | ---------- | ---- |
-        |   V   |       | Cox              |            |                  |                  |            |      |
-        |   V   |       | Weibull AFT      |            |                  |                  |            |      |
-        |   V   |       | Log-logistic AFT |            |                  |                  |            |      |
-        |       |   V   | Cox              |            |                  |                  |            |      |
-        |       |   V   | Weibull AFT      |            |                  |                  |            |      |
-        |       |   V   | Log-logistic AFT |            |                  |                  |            |      |
-        |   V   |   V   | Cox              |   0.5726   |      0.6159      |      0.6114      | `nelnru6g` |      |
-        |   V   |   V   | Weibull AFT      |   0.4553   |      0.5147      |      0.6108      | `6ep13r9l` |      |
-        |   V   |   V   | Log-logistic AFT |   0.6108   |      0.6268      |      0.6174      | `rjmo63l5` |      |
+        |  EKG  |  HS   | Survival Model   | Best Model | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note                          |
+        | :---: | :---: | :--------------- | :--------: | :--------------: | :--------------: | ---------- | ----------------------------- |
+        |   V   |       | Cox              |            |                  |                  |            |                               |
+        |   V   |       | Weibull AFT      |            |                  |                  |            |                               |
+        |   V   |       | Log-logistic AFT |            |                  |                  |            |                               |
+        |       |   V   | Cox              |            |                  |                  |            |                               |
+        |       |   V   | Weibull AFT      |            |                  |                  |            |                               |
+        |       |   V   | Log-logistic AFT |            |                  |                  |            |                               |
+        |   V   |   V   | Cox              |   0.5726   |      0.6159      |      0.6114      | `nelnru6g` | sex, age, height, weight, BMI |
+        |   V   |   V   | Weibull AFT      |   0.4553   |      0.5147      |      0.6108      | `6ep13r9l` | sex, age, height, weight, BMI |
+        |   V   |   V   | Log-logistic AFT |   0.6108   |      0.6268      |      0.6174      | `rjmo63l5` | sex, age, height, weight, BMI |
 
 
 * Hazard prediction - Hybrid - Weighted Concordance Index of ADHF / Mortality
@@ -137,14 +137,14 @@
         |   V   |   V   | Log-logistic AFT |   0.7873   |      0.7777      |      0.7896      | `3g9aqusu` |      |
         
     * Without normal subjects
-        |  EKG  |  HS   | Survival Model   | Best Model | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note     |
-        | :---: | :---: | :--------------- | :--------: | :--------------: | :--------------: | ---------- | -------- |
-        |   V   |       | Cox              |            |                  |                  |            |          |
-        |   V   |       | Weibull AFT      |            |                  |                  |            |          |
-        |   V   |       | Log-logistic AFT |            |                  |                  |            |          |
-        |       |   V   | Cox              |            |                  |                  |            |          |
-        |       |   V   | Weibull AFT      |            |                  |                  |            |          |
-        |       |   V   | Log-logistic AFT |            |                  |                  |            |          |
-        |   V   |   V   | Cox              |   0.6069   |      0.6131      |      0.6200      | `ldui46cc` | sex, age |
-        |   V   |   V   | Weibull AFT      |   0.6178   |      0.6356      |      0.6354      | `d345t3sz` | sex, age |
-        |   V   |   V   | Log-logistic AFT |   0.6342   |      0.6382      |      0.6341      | `g1aqnc4r` | sex, age |
+        |  EKG  |  HS   | Survival Model   | Best Model | 3-Model Ensemble | 5-Model Ensemble | Sweep ID   | Note          |
+        | :---: | :---: | :--------------- | :--------: | :--------------: | :--------------: | ---------- | ------------- |
+        |   V   |       | Cox              |            |                  |                  |            |               |
+        |   V   |       | Weibull AFT      |            |                  |                  |            |               |
+        |   V   |       | Log-logistic AFT |            |                  |                  |            |               |
+        |       |   V   | Cox              |            |                  |                  |            |               |
+        |       |   V   | Weibull AFT      |            |                  |                  |            |               |
+        |       |   V   | Log-logistic AFT |            |                  |                  |            |               |
+        |   V   |   V   | Cox              |   0.6427   |      0.6362      |      0.6324      | `m6gmavxd` | sex, age, BMI |
+        |   V   |   V   | Weibull AFT      |   0.6206   |      0.6235      |      0.6507      | `phltanpf` | sex, age, BMI |
+        |   V   |   V   | Log-logistic AFT |   0.6344   |      0.6351      |      0.6302      | `ge44yydf` | sex, age, BMI |
