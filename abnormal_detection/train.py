@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import pickle
 import numpy as np
+import configparser
 import better_exceptions; better_exceptions.hook()
 
 import os, sys
@@ -105,7 +106,10 @@ def train():
     evaluation.evaluation([model], test_set)
 
 if __name__ == '__main__':
-    wandb.init(project='ekg-abnormal_detection', entity='toosyou')
+    config = configparser.ConfigParser()
+    config.read(os.path.join(os.path.dirname(__file__), '..', 'config.cfg'))
+
+    wandb.init(project='ekg-abnormal_detection', entity=config['General']['wandb_entity'])
 
     # search result
     set_wandb_config({

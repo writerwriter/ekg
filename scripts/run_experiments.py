@@ -5,18 +5,22 @@ import time
 import wandb
 from generate_sweeps import get_all_sweeps
 import pprint
-import sys
+import sys, os
+import configparser
 
 import libtmux
 
 import better_exceptions; better_exceptions.hook()
 
-ENTITY = 'toosyou'
+# read the wandb entity from config.cfg
+config = configparser.ConfigParser()
+config.read(os.path.join(os.path.dirname(__file__), '..', 'config.cfg'))
+ENTITY = config['General']['wandb_entity']
+NUMBER_GPU = int(config['General']['number_gpu'])
 
 TMUX_SERVER = libtmux.Server()
 
 def create_sweep(wandb_project, sweep_config):
-    wandb_project = wandb_project
     sweep_id = wandb.sweep(sweep_config, entity=ENTITY, 
                         project=wandb_project)
     return '{}/{}/{}'.format(ENTITY, wandb_project, sweep_id)
@@ -36,7 +40,7 @@ def run_sweep_in_tmux(session_name, sweep_id, n_agents, n_runs):
     cmds = list()
     for i in range(n_agents):
         cmd = 'CUDA_VISIBLE_DEVICES="{}" pipenv run wandb agent --count {} {}'.format(
-                i % 2, n_runs // n_agents, sweep_id)
+                i % NUMBER_GPU, n_runs // n_agents, sweep_id)
         cmds.append(cmd)
     return run_cmds_in_tmux(session_name, cmds)
 
@@ -75,7 +79,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Run both abnormal detection and hazard prediction experiments with all possible setting.')
     parser.add_argument('-r', '--runs', type=int, nargs='?', default=200,
                         help='Total number of runs for all agents to run.')
-    parser.add_argument('-a', '--agents', type=int, nargs='?', default=4,
+    parser.add_argument('-a', '--agents', type=int, nargs='?', default=NUMBER_GPU,
                         help='Number of agents to run experiments')
     parser.add_argument('-f', '--filters', type=str, nargs='*',
                         help='Only run sweeps with certain strings in the sweep name.')

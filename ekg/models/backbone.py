@@ -202,6 +202,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
                     head_output = Concatenate(axis=-1, name='pred_{}_info_concat'.format(i_class))([head_output, info])
                     for j in range(config.info_nlayers):
                         head_output = Dense(config.info_units, activation='relu', name='pred_{}_info_dense_{}'.format(i_class, j))(head_output)
+                        head_output = BatchNormalization(name='pred_{}_info_bn_{}'.format(i_class, j))(head_output)
 
                 head_output = Dense(1, activation='linear', name='pred_{}_output'.format(i_class))(head_output)
                 outputs.append(head_output)
@@ -217,6 +218,7 @@ def backbone(config, include_top=False, classification=True, classes=2):
                 output = Concatenate(axis=-1, name='final_info_concat')([output, info])
                 for i in range(config.info_nlayers):
                     output = Dense(config.info_units, name='final_info_dense_{}'.format(i))(output)
+                    output = BatchNormalization(name='final_info_bn_{}'.format(i))(output)
 
             output = Dense(classes, activation='softmax' if classification else 'linear', name='output')(output) # classification or regression
 

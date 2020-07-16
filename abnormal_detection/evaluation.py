@@ -53,6 +53,7 @@ def print_statistics(train_set, valid_set, test_set):
 
 if __name__ == '__main__':
     import wandb
+    import configparser
 
     from ekg.utils.eval_utils import parse_wandb_models
     from ekg.utils.eval_utils import get_evaluation_args, evaluation_log
@@ -60,6 +61,9 @@ if __name__ == '__main__':
     from train import AbnormalBigExamLoader, AbnormalAudicor10sLoader
     from train import preprocessing, AbnormalDataGenerator
     from ekg.utils.data_utils import BaseDataGenerator
+
+    config = configparser.ConfigParser()
+    config.read(os.path.join(os.path.dirname(__file__), '..', 'config.cfg'))
 
     # get arguments
     args = get_evaluation_args('Abnormal detection evaluation.')
@@ -85,7 +89,7 @@ if __name__ == '__main__':
     print_statistics(train_set, valid_set, test_set)
 
     for n_model in numbers_models:
-        wandb.init(project='ekg-abnormal_detection', entity='toosyou', reinit=True)
+        wandb.init(project='ekg-abnormal_detection', entity=config['General']['wandb_entity'], reinit=True)
 
         evaluation_log(wandb_configs[:n_model], sweep_name, 
                         args.paths[0] if args.n_model is not None else '',

@@ -4,6 +4,7 @@ import better_exceptions; better_exceptions.hook()
 
 import matplotlib.pyplot as plt
 import numpy as np
+import configparser
 import os, sys
 sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
@@ -169,7 +170,10 @@ def train():
     evaluation_plot(prediction_model, train_set, test_set, 'testing - ', reverse=c_index_reverse, scatter_exp=scatter_exp, scatter_xlabel=scatter_xlabel)
 
 if __name__ == '__main__':
-    wandb.init(project='ekg-hazard_prediction', entity='toosyou')
+    config = configparser.ConfigParser()
+    config.read(os.path.join(os.path.dirname(__file__), '../config.cfg'))
+
+    wandb.init(project='ekg-hazard_prediction', entity=config['General']['wandb_entity'])
 
     # search result
     set_wandb_config({

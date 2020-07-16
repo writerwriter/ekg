@@ -1,65 +1,74 @@
 # EKG
 
-## Before Experiments
-1. Adjust `config.cfg`.
-1. Run the following commands to generate data to `data` directory
-    * `python3 scripts/data_preprocessing/big_exam.py`
-    * `python3 scripts/data_preprocessing/audicor_10s.py`
+## Dependencies
+1. Use `pipenv` to install dependencies and activate virtualenv:
+    ```bash
+    pipenv sync
+    pipenv shell
+    ```
+2. [`wandb`](https://www.wandb.com/) setup:
+    ```
+    wandb login
+    ```
+3. [optional] install `tmux` for [hyperparameter search](#hyperparameter-search)
 
-## Generated Data
-1. `big_exam`
-    * `abnormal_X.npy`
-        * shape: `[n_instances, n_channels, n_samples]`
-    * `normal_X.npy`
-        * shape: `[n_instances, n_channels, n_samples]`
-    * `abnormal_event.csv`
-        * events
-            * ADHF
-            * MI
-            * Stroke
-            * CVD
-            * Mortality
-        * attributes
-            * filename
-            * subject_id
-            * ADHF_censoring_status
-            * ADHF_survival_time
-            * MI_censoring_status
-            * MI_survival_time
-            * Stroke_censoring_status
-            * Stroke_survival_time
-            * CVD_censoring_status
-            * CVD_survival_time
-            * Mortality_censoring_status
-            * Mortality_survival_time
-2. `audicor_10s`
-    * `abnormal_X.npy`
-        * shape: `[n_instances, n_channels, n_samples]`
-    * `normal_X.npy`
-        * shape: `[n_instances, n_channels, n_samples]`
-    * `abnormal_filenames.npy`
-        * shape: `[n_instances]`
-    * `normal_filenames.npy`
-        * shape: `[n_instances]`
-    * `abnormal_event.csv`
-        * events
-            * ADHF
-            * CVD
-            * Mortality
-        * attributes
-            * filename
-            * measurement_date
-            * subject_id
-            * follow_up_date
-            * ADHF_dates
-            * ADHF_survival_time
-            * ADHF_censoring_status
-            * CVD_date
-            * CVD_survival_time
-            * CVD_censoring_status
-            * Mortality_date
-            * Mortality_survival_time
-            * Mortality_censoring_status
+## Data Preprocessing
+Apply denoising to EKG and heart sound signals, and save processed data for training.
+
+1. Setup `config.cfg`
+   * Change `wandb_entity` to your `wandb` account
+   * Set `number_gpu` for hyperparameter searches
+   * Set `Big_Exam` and `Audicor_10s`'s directories and label files paths accordingly
+   * Set `do_bandpass_filter = yes` to apply bandpass filters to heart sound signals
+       * otherwise set `do_bandpass_filter = no`
+
+2. Generate preprocessed data to `output_dir` directory setted in `config.cfg`:
+   ```bash
+   python3 scripts/data_preprocessing/big_exam.py
+   python3 scripts/data_preprocessing/audicor_10s.py
+   ```
+
+3. See [Preprocessed Data](#preprocessed-data) section for details of generated data
+
+## Training
+```bash
+python3 abnormal_detection/train.py
+python3 hazard_prediction/train.py
+```
+
+## Hyperparameter Search
+* `scripts/run_experiments.py` script does the following:
+    1. Generate a `wandb` sweep
+    2. Perform hyperparameter searches by the sweep in a new `tmux` session, which will be closed automatically
+    3. Use `evaluation.py` script to evaluate the performance
+        * which will upload the results to `wandb`
+
+* Run the following command to perform hyperparameter searches for 100 runs:
+    * Abnormal detection
+        ```bash
+        python3 ./scripts/run_experiments.py -f abnormal [dataset_setting] [channel_setting] -r 100 --nodryrun
+        ```
+        * Settings
+            * dataset_setting
+                * audicor_10s
+                * big_exam
+                * hybrid/audicor_as_test
+                * hybrid/both_as_test
+            * channel_setting
+                * only_hs
+                * only_ekg
+                * whole
+
+* Obtain the overall results from `wandb` website
+    * Abnormal detection - https://app.wandb.ai/[wandb_entity]/ekg-abnormal_detection/table
+    * Set `sweep_name` filter to desired settings
+    * Check the testing performances, which are named with `best_test` prefix
+        * e.g. `best_test_acc`, `best_test_f1_score` ...etc.
+
+## Prediction
+* Check [`notebooks/predictions.ipynb`](./notebooks/predictions.ipynb) for prediction examples.
+
+---
 
 ## Data Statistics
 | Data                      	| big_exam                         	| audicor_10s     	|
@@ -148,3 +157,58 @@
         |   V   |   V   | Cox              |   0.6427   |      0.6362      |      0.6324      | `m6gmavxd` | sex, age, BMI |
         |   V   |   V   | Weibull AFT      |   0.6206   |      0.6235      |      0.6507      | `phltanpf` | sex, age, BMI |
         |   V   |   V   | Log-logistic AFT |   0.6344   |      0.6351      |      0.6302      | `ge44yydf` | sex, age, BMI |
+
+## Preprocessed Data
+1. `big_exam`
+    * `abnormal_X.npy`
+        * shape: `[n_instances, n_channels, n_samples]`
+    * `normal_X.npy`
+        * shape: `[n_instances, n_channels, n_samples]`
+    * `abnormal_event.csv`
+        * events
+            * ADHF
+            * MI
+            * Stroke
+            * CVD
+            * Mortality
+        * attributes
+            * filename
+            * subject_id
+            * ADHF_censoring_status
+            * ADHF_survival_time
+            * MI_censoring_status
+            * MI_survival_time
+            * Stroke_censoring_status
+            * Stroke_survival_time
+            * CVD_censoring_status
+            * CVD_survival_time
+            * Mortality_censoring_status
+            * Mortality_survival_time
+2. `audicor_10s`
+    * `abnormal_X.npy`
+        * shape: `[n_instances, n_channels, n_samples]`
+    * `normal_X.npy`
+        * shape: `[n_instances, n_channels, n_samples]`
+    * `abnormal_filenames.npy`
+        * shape: `[n_instances]`
+    * `normal_filenames.npy`
+        * shape: `[n_instances]`
+    * `abnormal_event.csv`
+        * events
+            * ADHF
+            * CVD
+            * Mortality
+        * attributes
+            * filename
+            * measurement_date
+            * subject_id
+            * follow_up_date
+            * ADHF_dates
+            * ADHF_survival_time
+            * ADHF_censoring_status
+            * CVD_date
+            * CVD_survival_time
+            * CVD_censoring_status
+            * Mortality_date
+            * Mortality_survival_time
+            * Mortality_censoring_status

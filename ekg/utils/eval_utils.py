@@ -178,7 +178,7 @@ def parse_wandb_models(path, numbers_models=None, metric=None):
     
     Args:
         path: a list contains either run paths or a sweep path
-        numbers_models: a list of numbers of models.
+        numbers_models: a integer or a list of numbers of models.
                         if None, treat path as run paths, otherwise treat it as a sweep path.
         metric: metric to sort by when parsing a sweep path
     '''
@@ -189,12 +189,14 @@ def parse_wandb_models(path, numbers_models=None, metric=None):
     modeldir = tempfile.mkdtemp()
 
     if numbers_models is not None: # sweep
+        numbers_models = max(numbers_models) if isinstance(numbers_models, list) else numbers_models
+
         sweep = api.sweep(path[0])
         sweep_name = sweep.config.get('name', '')
         # sort runs by metric
         runs = sorted(sweep.runs, key=lambda run: run.summary.get(metric, np.Inf if 'loss' in metric else 0), 
                             reverse=False if 'loss' in metric else True)
-        runs = runs[:max(numbers_models)]
+        runs = runs[:numbers_models]
     else:
         runs = [api.run(p) for p in path]
 
