@@ -77,14 +77,16 @@ class AFTLoss(tf.keras.layers.Layer):
     def call(self, inputs):
         '''
         Args:
-            inputs: [cs0, st0, cs1, st1, ... , risk0, risk1, ...]
+            inputs: [cs_input, st_input, risk]
         '''
+        cs_input, st_input, risk_input = inputs
+
         risks = list()
         total_loss = 0
         for i_event in range(self.n_events):
-            cs = inputs[i_event*2]
-            st = inputs[i_event*2 + 1]
-            risk = inputs[self.n_events * 2 + i_event]
+            cs = cs_input[:, i_event]
+            st = st_input[:, i_event]
+            risk = risk_input[:, i_event]
             risks.append(risk)
 
             log_sigma = self.log_sigma[i_event]

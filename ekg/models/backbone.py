@@ -159,6 +159,8 @@ def backbone(config, include_top=False, classification=True, classes=2):
     else:
         output = ekg if config.n_ekg_channels != 0 else hs
 
+    """to be modify"""
+    """
     if include_top: # final layers
         for i in range(config.final_nlayers):
             shortcut = output
@@ -221,5 +223,5 @@ def backbone(config, include_top=False, classification=True, classes=2):
                     output = BatchNormalization(name='final_info_bn_{}'.format(i))(output)
 
             output = Dense(classes, activation='softmax' if classification else 'linear', name='output')(output) # classification or regression
-
+    """
     return Model(inputs, [output])

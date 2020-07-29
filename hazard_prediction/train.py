@@ -30,6 +30,7 @@ from ekg.utils.data_utils import BaseDataGenerator, generate_wavelet
 from ekg.callbacks import LogBest, ConcordanceIndex
 
 from ekg.models.backbone import backbone
+from ekg.models.detr import DETR
 
 from evaluation import evaluation_plot, print_statistics
 from evaluation import evaluation, to_prediction_model
@@ -113,12 +114,15 @@ def train():
     if wandb.config.include_info and wandb.config.info_apply_noise:
         wandb.config.info_norm_noise_std = np.array(wandb.config.info_noise_stds) / np.array(g.means_and_stds[1][1])
 
-    prediction_model = backbone(wandb.config, include_top=True, classification=False, classes=len(wandb.config.events))
-    trainable_model = get_trainable_model(prediction_model, get_loss_layer(wandb.config.loss))
+    #prediction_model = backbone(wandb.config, include_top=True, classification=False, classes=len(wandb.config.events))
+    prediction_model = DETR()
+    #prediction_model.build(None)
+    #prediction_model.summary()
+    trainable_model = prediction_model
 
     trainable_model.compile(RAdam(1e-4) if wandb.config.radam else Adam(amsgrad=True), loss=None)
-    trainable_model.summary()
-    wandb.log({'model_params': trainable_model.count_params()}, commit=False)
+    #trainable_model.summary()
+    #wandb.log({'model_params': trainable_model.count_params()}, commit=False)
 
     c_index_reverse, scatter_exp = (wandb.config.loss != 'AFT'), (wandb.config.loss == 'AFT')
     scatter_xlabel = 'predicted survival time (days)'if wandb.config.loss == 'AFT' else 'predicted risk'
@@ -126,7 +130,7 @@ def train():
     callbacks = [
         # ReduceLROnPlateau(patience=10, cooldown=5, verbose=1),
         LossVariableChecker(wandb.config.events),
-        ConcordanceIndex(train_set, valid_set, wandb.config.events, prediction_model, reverse=c_index_reverse),
+        #ConcordanceIndex(train_set, valid_set, wandb.config.events, prediction_model, reverse=c_index_reverse),
         LogBest(records=['val_loss', 'loss'] + 
                     ['{}_cindex'.format(event_name) for event_name in wandb.config.events] +
                     ['val_{}_cindex'.format(event_name) for event_name in wandb.config.events] +
@@ -180,7 +184,7 @@ if __name__ == '__main__':
         'sincconv_filter_length': 26,
         'sincconv_nfilters': 8,
 
-        'branch_nlayers': 1,
+        'branch_nlayers': 3,
 
         'ekg_kernel_length': 35,
         'hs_kernel_length': 21,
